@@ -20,8 +20,20 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Password is required'],
-    minlength: [6, 'Password must be at least 6 characters'],
-    select: false // Don't return password by default
+    minlength: [12, 'Password must be at least 12 characters'],
+    select: false, // Don't return password by default
+    validate: {
+      validator: function(password) {
+        // Require: 1 uppercase, 1 lowercase, 1 number, 1 special character
+        const hasUpperCase = /[A-Z]/.test(password);
+        const hasLowerCase = /[a-z]/.test(password);
+        const hasNumber = /\d/.test(password);
+        const hasSpecialChar = /[@$!%*?&]/.test(password);
+        
+        return hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar;
+      },
+      message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)'
+    }
   },
   avatar: {
     type: String,
@@ -49,10 +61,57 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true
   }],
-  isVerified: {
+  age: {
+    type: Number,
+    min: [18, 'Must be at least 18 years old'],
+    max: [120, 'Invalid age']
+  },
+  gender: {
+    type: String,
+    enum: ['Male', 'Female', 'Non-binary', 'Prefer not to say', 'Other'],
+    default: 'Prefer not to say'
+  },
+  interests: [{
+    type: String,
+    maxlength: [50, 'Each interest cannot exceed 50 characters']
+  }],
+  lookingFor: [{
+    type: String,
+    enum: ['Friends', 'Study Partners', 'Events', 'Networking', 'Language Exchange', 'Sports Partners'],
+  }],
+  // Age Verification (GDPR Youth Protection)
+  // Age Verification (GDPR Youth Protection)
+  ageVerified: {
+    type: Boolean,
+    default: false,
+    required: true
+  },
+  ageVerifiedDate: Date,
+  ageVerificationMethod: {
+    type: String,
+    enum: ['checkbox', 'id-upload', 'third-party'],
+    default: 'checkbox'
+  },
+  // Email Verification
+  isEmailVerified: {
     type: Boolean,
     default: false
   },
+  emailVerificationToken: String,
+  emailVerificationExpires: Date,
+  emailVerifiedAt: Date,
+  // Password Reset
+  passwordResetToken: String,
+  passwordResetExpires: Date,
+  // Legal Consent Tracking
+  acceptedTermsVersion: String,
+  acceptedTermsDate: Date,
+  acceptedPrivacyVersion: String,
+  acceptedPrivacyDate: Date,
+  likedBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
   createdAt: {
     type: Date,
     default: Date.now
@@ -60,6 +119,30 @@ const userSchema = new mongoose.Schema({
   lastActive: {
     type: Date,
     default: Date.now
+  },
+  // GDPR Compliance Fields
+  gdprConsent: {
+    necessary: {
+      type: Boolean,
+      default: false // ✅ FIXED: No longer defaults to true - must be explicit
+    },
+    analytics: {
+      type: Boolean,
+      default: false
+    },
+    marketing: {
+      type: Boolean,
+      default: false
+    },
+    consentDate: {
+      type: Date
+    },
+    ipAddress: {
+      type: String
+    },
+    lastUpdated: {
+      type: Date
+    }
   }
 }, {
   timestamps: true,
@@ -72,6 +155,11 @@ userSchema.virtual('hostedEvents', {
   ref: 'Event',
   localField: '_id',
   foreignField: 'host'
+});
+
+// Virtual for likes count
+userSchema.virtual('likesCount').get(function() {
+  return this.likedBy ? this.likedBy.length : 0;
 });
 
 // Hash password before saving

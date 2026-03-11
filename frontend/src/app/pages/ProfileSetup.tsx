@@ -25,6 +25,19 @@ export default function ProfileSetup() {
     city: "",
     languages: [] as string[],
     photo: "",
+    age: "",
+    gender: "Prefer not to say",
+    interests: [] as string[],
+    lookingFor: [] as string[]
+  });
+  // Legal consent tracking (GDPR compliance)
+  const [consent, setConsent] = useState({
+    ageVerified: false,
+    acceptedTerms: false,
+    acceptedPrivacy: false,
+    gdprNecessary: false,
+    gdprAnalytics: false,
+    gdprMarketing: false
   });
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
@@ -45,6 +58,9 @@ export default function ProfileSetup() {
 
   const availableLanguages = ["English", "German", "Arabic", "Spanish", "French", "Turkish", "Italian"];
   const germanCities = ["Berlin", "Munich", "Hamburg", "Frankfurt", "Cologne", "Stuttgart", "Düsseldorf"];
+  const availableInterests = ["Music", "Sports", "Reading", "Travel", "Cooking", "Photography", "Art", "Technology", "Gaming", "Fitness", "Movies", "Dancing", "Hiking", "Yoga"];
+  const lookingForOptions = ["Friends", "Study Partners", "Events", "Networking", "Language Exchange", "Sports Partners"];
+  const genderOptions = ["Male", "Female", "Non-binary", "Prefer not to say", "Other"];
 
   const toggleLanguage = (lang: string) => {
     setProfile({
@@ -52,6 +68,24 @@ export default function ProfileSetup() {
       languages: profile.languages.includes(lang)
         ? profile.languages.filter((l) => l !== lang)
         : [...profile.languages, lang],
+    });
+  };
+
+  const toggleInterest = (interest: string) => {
+    setProfile({
+      ...profile,
+      interests: profile.interests.includes(interest)
+        ? profile.interests.filter((i) => i !== interest)
+        : [...profile.interests, interest],
+    });
+  };
+
+  const toggleLookingFor = (option: string) => {
+    setProfile({
+      ...profile,
+      lookingFor: profile.lookingFor.includes(option)
+        ? profile.lookingFor.filter((o) => o !== option)
+        : [...profile.lookingFor, option],
     });
   };
 
@@ -144,6 +178,20 @@ export default function ProfileSetup() {
         }
       }
 
+      // Validate legal consent (CRITICAL - German law requirement)
+      if (!consent.ageVerified) {
+        throw new Error("You must confirm that you are 18 or older");
+      }
+      if (!consent.acceptedTerms) {
+        throw new Error("You must accept the Terms of Service");
+      }
+      if (!consent.acceptedPrivacy) {
+        throw new Error("You must accept the Privacy Policy");
+      }
+      if (!consent.gdprNecessary) {
+        throw new Error("You must consent to necessary data processing");
+      }
+
       // Complete registration with backend
       await authService.register({
         name: registerData.name,
@@ -153,7 +201,20 @@ export default function ProfileSetup() {
         languages: profile.languages,
         bio: profile.bio || undefined,
         avatar: imageUrls[0] || undefined,  // First image as avatar
-        images: imageUrls.length > 0 ? imageUrls : undefined
+        images: imageUrls.length > 0 ? imageUrls : undefined,
+        age: profile.age ? parseInt(profile.age) : undefined,
+        gender: profile.gender,
+        interests: profile.interests.length > 0 ? profile.interests : undefined,
+        lookingFor: profile.lookingFor.length > 0 ? profile.lookingFor : undefined,
+        // Legal consent tracking (GDPR compliance)
+        ageVerified: consent.ageVerified,
+        acceptedTermsVersion: "1.0",
+        acceptedPrivacyVersion: "1.0",
+        gdprConsent: {
+          necessary: consent.gdprNecessary,
+          analytics: consent.gdprAnalytics,
+          marketing: consent.gdprMarketing
+        }
       });
 
       // Clear temp data
@@ -185,7 +246,7 @@ export default function ProfileSetup() {
 
           {/* Progress */}
           <div className="flex gap-2">
-            {[1, 2, 3].map((s) => (
+            {[1, 2, 3, 4].map((s) => (
               <div
                 key={s}
                 className={`h-2 flex-1 rounded-full transition-colors ${
@@ -360,6 +421,203 @@ export default function ProfileSetup() {
             </div>
           )}
 
+          {/* Step 4: Interests, Preferences & Legal Consent */}
+          {step === 4 && (
+            <div className="space-y-8">
+              {/* Basic Info */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="age">Age (Optional)</Label>
+                    <Input
+                      id="age"
+                      type="number"
+                      min="18"
+                      max="100"
+                      placeholder="25"
+                      value={profile.age}
+                      onChange={(e) => setProfile({ ...profile, age: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="gender">Gender (Optional)</Label>
+                    <select
+                      id="gender"
+                      className="w-full h-10 px-3 rounded-lg border border-input bg-input-background"
+                      value={profile.gender}
+                      onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
+                    >
+                      {genderOptions.map((gender) => (
+                        <option key={gender} value={gender}>
+                          {gender}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interests */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Interests (Optional)</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Select your interests to find like-minded people
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {availableInterests.map((interest) => (
+                    <Badge
+                      key={interest}
+                      variant={profile.interests.includes(interest) ? "default" : "outline"}
+                      className="cursor-pointer px-4 py-2 text-sm"
+                      onClick={() => toggleInterest(interest)}
+                    >
+                      {interest}
+                      {profile.interests.includes(interest) && (
+                        <X className="ml-2 h-3 w-3" />
+                      )}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Looking For */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>What are you looking for? (Optional)</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Select all that apply
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {lookingForOptions.map((option) => (
+                    <Badge
+                      key={option}
+                      variant={profile.lookingFor.includes(option) ? "default" : "outline"}
+                      className="cursor-pointer px-4 py-2 text-sm"
+                      onClick={() => toggleLookingFor(option)}
+                    >
+                      {option}
+                      {profile.lookingFor.includes(option) && (
+                        <X className="ml-2 h-3 w-3" />
+                      )}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* LEGAL CONSENT (CRITICAL - GDPR & JuSchG Compliance) */}
+              <div className="space-y-4 border-2 border-primary/20 rounded-lg p-6 bg-primary/5">
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold text-primary">Legal Consent (Required)</h3>
+                  <p className="text-sm text-muted-foreground">
+                    We are required by German law (GDPR, JuSchG) to obtain your explicit consent
+                  </p>
+                </div>
+
+                {/* Age Verification (JuSchG) */}
+                <div className="flex items-start space-x-3 p-3 bg-background rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="ageVerified"
+                    checked={consent.ageVerified}
+                    onChange={(e) => setConsent({ ...consent, ageVerified: e.target.checked })}
+                    className="mt-1 h-4 w-4 rounded border-gray-300"
+                  />
+                  <label htmlFor="ageVerified" className="text-sm cursor-pointer">
+                    <span className="font-semibold text-destructive">*</span> I confirm that I am <strong>18 years or older</strong>. This is required by German Youth Protection Act (JuSchG).
+                  </label>
+                </div>
+
+                {/* Terms of Service */}
+                <div className="flex items-start space-x-3 p-3 bg-background rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="acceptedTerms"
+                    checked={consent.acceptedTerms}
+                    onChange={(e) => setConsent({ ...consent, acceptedTerms: e.target.checked })}
+                    className="mt-1 h-4 w-4 rounded border-gray-300"
+                  />
+                  <label htmlFor="acceptedTerms" className="text-sm cursor-pointer">
+                    <span className="font-semibold text-destructive">*</span> I accept the{" "}
+                    <a href="/terms" target="_blank" className="text-primary underline hover:text-primary/80">
+                      Terms of Service
+                    </a>{" "}
+                    (v1.0)
+                  </label>
+                </div>
+
+                {/* Privacy Policy */}
+                <div className="flex items-start space-x-3 p-3 bg-background rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="acceptedPrivacy"
+                    checked={consent.acceptedPrivacy}
+                    onChange={(e) => setConsent({ ...consent, acceptedPrivacy: e.target.checked })}
+                    className="mt-1 h-4 w-4 rounded border-gray-300"
+                  />
+                  <label htmlFor="acceptedPrivacy" className="text-sm cursor-pointer">
+                    <span className="font-semibold text-destructive">*</span> I accept the{" "}
+                    <a href="/privacy" target="_blank" className="text-primary underline hover:text-primary/80">
+                      Privacy Policy
+                    </a>{" "}
+                    (v1.0)
+                  </label>
+                </div>
+
+                {/* GDPR Necessary Consent */}
+                <div className="flex items-start space-x-3 p-3 bg-background rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="gdprNecessary"
+                    checked={consent.gdprNecessary}
+                    onChange={(e) => setConsent({ ...consent, gdprNecessary: e.target.checked })}
+                    className="mt-1 h-4 w-4 rounded border-gray-300"
+                  />
+                  <label htmlFor="gdprNecessary" className="text-sm cursor-pointer">
+                    <span className="font-semibold text-destructive">*</span> I consent to the processing of my personal data for essential app functionality (GDPR Article 6).
+                  </label>
+                </div>
+
+                {/* GDPR Analytics (Optional) */}
+                <div className="flex items-start space-x-3 p-3 bg-background rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="gdprAnalytics"
+                    checked={consent.gdprAnalytics}
+                    onChange={(e) => setConsent({ ...consent, gdprAnalytics: e.target.checked })}
+                    className="mt-1 h-4 w-4 rounded border-gray-300"
+                  />
+                  <label htmlFor="gdprAnalytics" className="text-sm cursor-pointer">
+                    I consent to analytics cookies to help improve the app (optional).
+                  </label>
+                </div>
+
+                {/* GDPR Marketing (Optional) */}
+                <div className="flex items-start space-x-3 p-3 bg-background rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="gdprMarketing"
+                    checked={consent.gdprMarketing}
+                    onChange={(e) => setConsent({ ...consent, gdprMarketing: e.target.checked })}
+                    className="mt-1 h-4 w-4 rounded border-gray-300"
+                  />
+                  <label htmlFor="gdprMarketing" className="text-sm cursor-pointer">
+                    I consent to receiving marketing communications (optional).
+                  </label>
+                </div>
+
+                <p className="text-xs text-muted-foreground pt-2">
+                  <span className="font-semibold text-destructive">*</span> Required fields. You can change your consent preferences later in settings.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Navigation Buttons */}
           <div className="flex gap-4">
             {step > 1 && (
@@ -372,7 +630,7 @@ export default function ProfileSetup() {
                 Back
               </Button>
             )}
-            {step < 3 ? (
+            {step < 4 ? (
               <Button
                 onClick={() => setStep(step + 1)}
                 className="flex-1"
@@ -388,10 +646,17 @@ export default function ProfileSetup() {
               <Button 
                 onClick={handleComplete} 
                 className="flex-1"
-                disabled={loading || uploading}
+                disabled={
+                  loading || 
+                  uploading || 
+                  !consent.ageVerified || 
+                  !consent.acceptedTerms || 
+                  !consent.acceptedPrivacy || 
+                  !consent.gdprNecessary
+                }
               >
                 {uploading 
-                  ? "Uploading image..." 
+                  ? "Uploading images..." 
                   : loading 
                   ? "Creating account..." 
                   : "Complete Profile"}

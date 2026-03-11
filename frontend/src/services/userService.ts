@@ -21,6 +21,16 @@ class UserService {
     
     return await api.get(`/users?${queryParams.toString()}`);
   }
+
+  async likeUser(userId: string) {
+    const response = await api.post(`/users/${userId}/like`);
+    return response.data;
+  }
+
+  async unlikeUser(userId: string) {
+    const response = await api.delete(`/users/${userId}/like`);
+    return response.data;
+  }
 }
 
 export default new UserService();

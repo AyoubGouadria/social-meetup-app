@@ -9,6 +9,21 @@ export interface RegisterData {
   avatar?: string;
   images?: string[];
   bio?: string;
+  age?: number;
+  dateOfBirth?: string;
+  gender?: string;
+  occupation?: string;
+  education?: string;
+  interests?: string[];
+  phoneNumber?: string;
+  socialMedia?: {
+    instagram?: string;
+    facebook?: string;
+    twitter?: string;
+    linkedin?: string;
+  };
+  lookingFor?: string[];
+  relationshipStatus?: string;
 }
 
 export interface LoginData {
@@ -25,7 +40,26 @@ export interface User {
   bio: string;
   city: string;
   languages: string[];
+  age?: number;
+  dateOfBirth?: string;
+  gender?: string;
+  occupation?: string;
+  education?: string;
+  interests?: string[];
+  phoneNumber?: string;
+  socialMedia?: {
+    instagram?: string;
+    facebook?: string;
+    twitter?: string;
+    linkedin?: string;
+  };
+  lookingFor?: string[];
+  relationshipStatus?: string;
   isVerified: boolean;
+  likedBy?: string[];
+  likesCount?: number;
+  hostedEventsCount?: number;
+  joinedEventsCount?: number;
   createdAt: string;
   lastActive: string;
 }
@@ -42,11 +76,9 @@ export interface AuthResponse {
 class AuthService {
   async register(data: RegisterData): Promise<AuthResponse> {
     const response = await api.post('/auth/register', data);
-    console.log('Register response:', response);
     
     // api interceptor already returns response.data
     if (response.data?.token) {
-      console.log('Saving token:', response.data.token);
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
     } else {
@@ -57,11 +89,9 @@ class AuthService {
 
   async login(data: LoginData): Promise<AuthResponse> {
     const response = await api.post('/auth/login', data);
-    console.log('Login response:', response);
     
     // api interceptor already returns response.data
     if (response.data?.token) {
-      console.log('Saving token:', response.data.token);
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
     } else {

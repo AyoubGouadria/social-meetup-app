@@ -26,10 +26,14 @@ export interface Event {
     _id: string;
     name: string;
     avatar: string;
+    city?: string;
+    bio?: string;
+    languages?: string[];
   }>;
   status: 'published' | 'cancelled' | 'completed';
   imageUrl?: string;
   currentParticipants: number;
+  pendingRequestCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -41,6 +45,10 @@ export interface CreateEventData {
   date: string;
   time: string;
   location: string;
+  locationCoords?: {
+    lat: number;
+    lng: number;
+  };
   maxParticipants: number;
   languages: string[];
   imageUrl?: string;
@@ -67,12 +75,10 @@ class EventService {
     return await api.get(`/events?${params.toString()}`);
   }
 
-  async getEvent(id: string): Promise<Event> {
+  async getEvent(id: string) {
     try {
-      console.log('EventService: Fetching event', id);
       const response = await api.get(`/events/${id}`);
-      console.log('EventService: Response received', response);
-      return response.data;
+      return response;
     } catch (error) {
       console.error('EventService: Error fetching event', error);
       throw error;

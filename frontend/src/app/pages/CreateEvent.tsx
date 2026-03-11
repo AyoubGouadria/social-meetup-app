@@ -10,6 +10,7 @@ import { Badge } from "../components/ui/badge";
 import { ArrowLeft, X, Loader2 } from "lucide-react";
 import eventService from "../../services/eventService";
 import { useToast } from "../components/ui/use-toast";
+import { MapLocationPicker } from "../components/MapLocationPicker";
 
 export default function CreateEvent() {
   const navigate = useNavigate();
@@ -19,10 +20,12 @@ export default function CreateEvent() {
   const [eventData, setEventData] = useState({
     title: "",
     description: "",
-    category: "coffee" as const,
+    category: "coffee" as "coffee" | "walk" | "study" | "gym" | "explore" | "other",
+    customCategory: "",
     date: "",
     time: "",
     location: "",
+    locationCoords: undefined as { lat: number; lng: number } | undefined,
     maxParticipants: 4,
     languages: [] as string[],
   });
@@ -47,10 +50,11 @@ export default function CreateEvent() {
       await eventService.createEvent({
         title: eventData.title,
         description: eventData.description,
-        category: eventData.category,
+        category: eventData.category === 'other' ? eventData.customCategory : eventData.category,
         date: eventData.date,
         time: eventData.time,
         location: eventData.location,
+        locationCoords: eventData.locationCoords,
         maxParticipants: eventData.maxParticipants,
         languages: eventData.languages,
       });
@@ -91,7 +95,12 @@ export default function CreateEvent() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Title */}
             <div className="space-y-2">
-              <Label htmlFor="title">Event Title *</Label>
+              <div className="flex justify-between items-center">
+                <Label htmlFor="title">Event Title *</Label>
+                <span className={`text-xs ${eventData.title.length > 0 && eventData.title.length < 3 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {eventData.title.length}/100
+                </span>
+              </div>
               <Input
                 id="title"
                 placeholder="e.g., Coffee at Alexanderplatz"
@@ -99,13 +108,24 @@ export default function CreateEvent() {
                 onChange={(e) =>
                   setEventData({ ...eventData, title: e.target.value })
                 }
+                minLength={3}
+                maxLength={100}
                 required
+                className={eventData.title.length > 0 && eventData.title.length < 3 ? 'border-destructive' : ''}
               />
+              <p className={`text-xs ${eventData.title.length > 0 && eventData.title.length < 3 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                Minimum 3 characters
+              </p>
             </div>
 
             {/* Description */}
             <div className="space-y-2">
-              <Label htmlFor="description">{t("description")} *</Label>
+              <div className="flex justify-between items-center">
+                <Label htmlFor="description">{t("description")} *</Label>
+                <span className={`text-xs ${eventData.description.length > 0 && eventData.description.length < 10 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {eventData.description.length}/1000
+                </span>
+              </div>
               <Textarea
                 id="description"
                 placeholder="Tell people what to expect..."
@@ -114,8 +134,14 @@ export default function CreateEvent() {
                   setEventData({ ...eventData, description: e.target.value })
                 }
                 rows={4}
+                minLength={10}
+                maxLength={1000}
                 required
+                className={eventData.description.length > 0 && eventData.description.length < 10 ? 'border-destructive' : ''}
               />
+              <p className={`text-xs ${eventData.description.length > 0 && eventData.description.length < 10 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                Minimum 10 characters
+              </p>
             </div>
 
             {/* Category */}
@@ -139,6 +165,24 @@ export default function CreateEvent() {
                   </Button>
                 ))}
               </div>
+
+              {/* Custom Category Input */}
+              {eventData.category === 'other' && (
+                <div className="space-y-2 mt-3">
+                  <Label htmlFor="customCategory">Specify Category *</Label>
+                  <Input
+                    id="customCategory"
+                    placeholder="e.g., Gaming, Cooking, Art..."
+                    value={eventData.customCategory}
+                    onChange={(e) =>
+                      setEventData({ ...eventData, customCategory: e.target.value })
+                    }
+                    minLength={3}
+                    maxLength={30}
+                    required
+                  />
+                </div>
+              )}
             </div>
 
             {/* Date & Time */}
@@ -172,15 +216,19 @@ export default function CreateEvent() {
 
             {/* Location */}
             <div className="space-y-2">
-              <Label htmlFor="location">{t("location")} *</Label>
-              <Input
-                id="location"
-                placeholder="e.g., Alexanderplatz, Berlin"
-                value={eventData.location}
-                onChange={(e) =>
-                  setEventData({ ...eventData, location: e.target.value })
+              <Label>{t("location")} *</Label>
+              <MapLocationPicker
+                value={{
+                  address: eventData.location,
+                  coordinates: eventData.locationCoords,
+                }}
+                onChange={(location) =>
+                  setEventData({
+                    ...eventData,
+                    location: location.address,
+                    locationCoords: location.coordinates,
+                  })
                 }
-                required
               />
             </div>
 
@@ -239,7 +287,8 @@ export default function CreateEvent() {
                 !eventData.date ||
                 !eventData.time ||
                 !eventData.location ||
-                eventData.languages.length === 0
+                eventData.languages.length === 0 ||
+                (eventData.category === 'other' && !eventData.customCategory)
               }
             >
               {isLoading ? (

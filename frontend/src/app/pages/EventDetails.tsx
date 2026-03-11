@@ -1,40 +1,137 @@
 import { useNavigate, useParams } from "react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { ProfilePreviewModal } from "../components/ProfilePreviewModal";
-import { JoinRequestModal } from "../components/JoinRequestModal";
+import { LocationMapModal } from "../components/LocationMapModal";
 import { StatusBadge } from "../components/StatusBadge";
-import { mockEvents, User } from "../utils/mockData";
+import { BottomNav } from "../components/BottomNav";
+import { Header } from "../components/Header";
+import eventService, { Event } from "../../services/eventService";
+import joinRequestService, { JoinRequest } from "../../services/joinRequestService";
+import { useToast } from "../components/ui/use-toast";
 import { motion } from "motion/react";
 import {
-  ArrowLeft,
   MapPin,
   Calendar,
   Clock,
   Users,
   Languages,
   MessageCircle,
-  Share2,
   ChevronRight,
-  Send,
+  Bell,
+  Check,
+  X,
+  Loader2,
+  Navigation,
+  Edit2,
+  Trash2,
+  ArrowLeft,
 } from "lucide-react";
 
 export default function EventDetails() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { t } = useLanguage();
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const { toast } = useToast();
+  
+  const [event, setEvent] = useState<Event | null>(null);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [isJoinRequestOpen, setIsJoinRequestOpen] = useState(false);
-  const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "pending">("idle");
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const event = mockEvents.find((e) => e.id === id);
+  useEffect(() => {
+    if (id) {
+      fetchEvent();
+      // Get current user ID from localStorage
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        setCurrentUserId(user._id);
+      }
+    }
+  }, [id]);
 
-  const handleUserClick = (user: User) => {
+  useEffect(() => {
+    if (event && currentUserId && event.host._id === currentUserId) {
+      fetchJoinRequests();
+    }
+  }, [event, currentUserId]);
+
+  const fetchEvent = async () => {
+    try {
+      setIsLoading(true);
+      const response = await eventService.getEvent(id!);
+      setEvent(response.data);
+    } catch (error) {
+      console.error("Error fetching event:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load event details.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchJoinRequests = async () => {
+    try {
+      const response = await joinRequestService.getEventJoinRequests(id!);
+      setJoinRequests(response.data || []);
+    } catch (error) {
+      console.error("Error fetching join requests:", error);
+    }
+  };
+
+  const handleAcceptRequest = async (requestId: string) => {
+    try {
+      await joinRequestService.acceptJoinRequest(requestId);
+      toast({
+        title: "Request Accepted",
+        description: "The user has been added to your event.",
+      });
+      // Refresh data
+      fetchEvent();
+      fetchJoinRequests();
+    } catch (error: any) {
+      console.error("Error accepting request:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to accept request.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeclineRequest = async (requestId: string) => {
+    try {
+      await joinRequestService.rejectJoinRequest(requestId);
+      toast({
+        title: "Request Declined",
+        description: "The join request has been rejected.",
+      });
+      // Refresh data
+      fetchJoinRequests();
+    } catch (error: any) {
+      console.error("Error declining request:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to decline request.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUserClick = (user: any) => {
     setSelectedUser(user);
     setIsPreviewOpen(true);
   };
@@ -43,15 +140,78 @@ export default function EventDetails() {
     navigate(`/profile/${userId}`);
   };
 
-  const handleJoinRequest = (message: string) => {
-    // In real app, send API request here
-    console.log("Join request sent:", { eventId: id, message });
-    setJoinRequestStatus("pending");
-    // Navigate to joined events after requesting
-    setTimeout(() => {
-      navigate("/joined-events");
-    }, 1000);
+  const handleEditEvent = () => {
+    navigate(`/edit-event/${event?._id}`);
   };
+
+  const handleDeleteEvent = async () => {
+    if (!event?._id) return;
+    
+    try {
+      setIsDeleting(true);
+      await eventService.deleteEvent(event._id);
+      toast({
+        title: "Success",
+        description: "Event deleted successfully.",
+      });
+      navigate("/my-events");
+    } catch (error: any) {
+      console.error("Error deleting event:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete event.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  // Extract short location name (city name) from full address
+  const getShortLocation = (fullAddress: string): string => {
+    if (!fullAddress) return "";
+    
+    // Split by comma
+    const parts = fullAddress.split(',').map(p => p.trim());
+    
+    // If there are multiple parts, try to find the city name
+    if (parts.length > 3) {
+      // Usually the city is the 4th part (after POI, number, street)
+      // or we can look for the part before "Landkreis" or postal code
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        // Skip if it's a number, starts with Landkreis, or is a postal code
+        if (/^\d+$/.test(part) || part.toLowerCase().startsWith('landkreis')) {
+          continue;
+        }
+        // If next part contains "Landkreis" or postal code, this is likely the city
+        if (i < parts.length - 1) {
+          const nextPart = parts[i + 1];
+          if (nextPart.toLowerCase().includes('landkreis') || /\d{5}/.test(nextPart)) {
+            return part;
+          }
+        }
+      }
+      // Fallback: return the 4th element if it exists and isn't a number
+      if (parts.length >= 4 && !/^\d+$/.test(parts[3])) {
+        return parts[3];
+      }
+    }
+    
+    // Fallback: return first part if it's reasonable length
+    return parts[0].length > 50 ? parts[0].substring(0, 47) + '...' : parts[0];
+  };
+
+  const isHost = currentUserId && event && event.host._id === currentUserId;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!event) {
     return (
@@ -74,44 +234,72 @@ export default function EventDetails() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col pb-16">
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/home")}>
-            <ArrowLeft className="h-5 w-5" />
+      <Header />
+
+      {/* Page Title Bar */}
+      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-14 z-40">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-center relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate(-1)}
+            className="h-8 w-8 absolute left-4"
+          >
+            <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-lg font-semibold">{t("event_details")}</h1>
-          <Button variant="ghost" size="icon">
-            <Share2 className="h-5 w-5" />
-          </Button>
+          <h1 className="text-xl font-semibold">Event Details</h1>
         </div>
-      </header>
+      </div>
 
       {/* Content */}
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
+      <main className="flex-1 container mx-auto px-4 py-6 max-w-4xl">
         <div className="space-y-6">
           {/* Event Card */}
-          <Card className="overflow-hidden">
-            {/* Hero Image */}
-            <div className="h-64 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-              <div className="text-center">
-                <Badge className={categoryColors[event.category]}>
+          <Card className="overflow-hidden shadow-lg">
+            {/* Hero Section with gradient */}
+            <div className="relative h-56 bg-gradient-to-br from-primary via-primary/90 to-primary/70 overflow-hidden">
+              {/* Pattern overlay */}
+              <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIxLTEuNzktNC00LTRzLTQgMS43OS00IDQgMS43OSA0IDQgNCA0LTEuNzkgNC00em0wLTEwYzAtMi4yMS0xLjc5LTQtNC00cy00IDEuNzktNCA0IDEuNzkgNCA0IDQgNC0xLjc5IDQtNHptMC0xMGMwLTIuMjEtMS43OS00LTQtNHMtNCAxLjc5LTQgNCAxLjc5IDQgNCA0IDQtMS43OSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
+              
+              {/* Category and Location Badges */}
+              <div className="absolute top-4 left-4 right-4 flex items-center justify-between gap-2">
+                <Badge className="bg-white/95 text-foreground hover:bg-white border-0 capitalize text-sm px-4 py-1.5 shadow-lg flex items-center gap-2">
                   {t(event.category as any)}
                 </Badge>
+                <button
+                  onClick={() => {
+                    if (event.locationCoords) {
+                      window.open(
+                        `https://www.google.com/maps/search/?api=1&query=${event.locationCoords.lat},${event.locationCoords.lng}`,
+                        '_blank'
+                      );
+                    } else {
+                      window.open(
+                        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`,
+                        '_blank'
+                      );
+                    }
+                  }}
+                  className="bg-white/95 hover:bg-white border-0 capitalize text-sm px-4 py-1.5 shadow-lg rounded-full flex items-center gap-2 transition-all"
+                >
+                  <Navigation className="h-4 w-4" />
+                  <span>{getShortLocation(event.location)}</span>
+                </button>
+              </div>
+
+              {/* Title and Date/Time */}
+              <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 via-black/50 to-transparent">
+                <h1 className="text-3xl font-bold mb-2 text-white drop-shadow-lg">{event.title}</h1>
+                <div className="flex items-center gap-2 text-white/90 text-sm">
+                  <Clock className="h-4 w-4" />
+                  <span>{new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {event.time}</span>
+                </div>
               </div>
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Title */}
-              <div>
-                <h1 className="text-3xl font-bold mb-2">{event.title}</h1>
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
-                  <span>{event.distance} km away</span>
-                </div>
-              </div>
-
               {/* Host Info */}
               <Card className="p-5 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
                 <div className="flex items-center gap-4">
@@ -147,7 +335,7 @@ export default function EventDetails() {
                     variant="outline"
                     size="sm"
                     className="gap-1.5"
-                    onClick={() => navigate(`/profile/${event.host.id}`)}
+                    onClick={() => navigate(`/profile/${event.host._id}`)}
                   >
                     View Profile
                     <ChevronRight className="h-4 w-4" />
@@ -156,64 +344,72 @@ export default function EventDetails() {
               </Card>
 
               {/* Description */}
-              <div>
-                <h3 className="font-semibold mb-2">{t("description")}</h3>
-                <p className="text-muted-foreground">{event.description}</p>
+              <div className="bg-muted/30 rounded-lg p-4">
+                <h3 className="font-semibold mb-2 text-sm text-muted-foreground uppercase tracking-wide">{t("description")}</h3>
+                <p className="text-foreground leading-relaxed">{event.description}</p>
               </div>
 
-              {/* Details */}
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-3">
+              {/* Details Grid */}
+              <div className="grid sm:grid-cols-2 gap-3">
+                {/* Date Card */}
+                <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Calendar className="h-5 w-5 text-primary" />
+                    <div className="h-12 w-12 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg">
+                      <Calendar className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Date</p>
-                      <p className="font-medium">
+                      <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-0.5">Date</p>
+                      <p className="font-semibold text-blue-900 text-sm">
                         {new Date(event.date).toLocaleDateString("en-US", {
-                          weekday: "long",
-                          month: "long",
+                          weekday: "short",
+                          month: "short",
                           day: "numeric",
                         })}
                       </p>
                     </div>
                   </div>
+                </Card>
 
+                {/* Time Card */}
+                <Card className="p-4 bg-gradient-to-br from-purple-50 to-purple-100/50 border-purple-200">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Clock className="h-5 w-5 text-primary" />
+                    <div className="h-12 w-12 rounded-xl bg-purple-500 flex items-center justify-center shadow-lg">
+                      <Clock className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Time</p>
-                      <p className="font-medium">{event.time}</p>
+                      <p className="text-xs text-purple-600 font-medium uppercase tracking-wide mb-0.5">Time</p>
+                      <p className="font-semibold text-purple-900 text-sm">{event.time}</p>
                     </div>
                   </div>
-                </div>
+                </Card>
 
-                <div className="space-y-3">
+                {/* Participants Card */}
+                <Card className="p-4 bg-gradient-to-br from-green-50 to-green-100/50 border-green-200">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Users className="h-5 w-5 text-primary" />
+                    <div className="h-12 w-12 rounded-xl bg-green-500 flex items-center justify-center shadow-lg">
+                      <Users className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("participants")}</p>
-                      <p className="font-medium">
-                        {event.currentParticipants}/{event.maxParticipants} joined
+                      <p className="text-xs text-green-600 font-medium uppercase tracking-wide mb-0.5">{t("participants")}</p>
+                      <p className="font-semibold text-green-900 text-sm">
+                        {event.participants?.length || 0}/{event.maxParticipants}
                       </p>
                     </div>
                   </div>
+                </Card>
 
+                {/* Languages Card */}
+                <Card className="p-4 bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Languages className="h-5 w-5 text-primary" />
+                    <div className="h-12 w-12 rounded-xl bg-amber-500 flex items-center justify-center shadow-lg">
+                      <Languages className="h-6 w-6 text-white" />
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Languages</p>
-                      <p className="font-medium">{event.languages.join(", ")}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-amber-600 font-medium uppercase tracking-wide mb-0.5">Languages</p>
+                      <p className="font-semibold text-amber-900 text-sm truncate">{event.languages.join(", ")}</p>
                     </div>
                   </div>
-                </div>
+                </Card>
               </div>
 
               {/* Location */}
@@ -222,100 +418,79 @@ export default function EventDetails() {
                   <MapPin className="h-4 w-4" />
                   {t("location")}
                 </h3>
-                <Card className="p-4 bg-muted/30">
-                  <p className="font-medium mb-2">{event.location}</p>
-                  {/* Mock Map */}
-                  <div className="h-48 bg-muted rounded-lg flex items-center justify-center">
-                    <div className="text-center text-muted-foreground">
-                      <MapPin className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">Map Preview</p>
+                <Card className="p-4 bg-gradient-to-br from-rose-50 to-rose-100/50 border-rose-200">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-rose-500 flex items-center justify-center flex-shrink-0 shadow-md">
+                      <MapPin className="h-5 w-5 text-white" />
                     </div>
+                    <p className="font-medium flex-1 break-words text-rose-900">{event.location}</p>
                   </div>
+                  <Button
+                    onClick={() => {
+                      if (event.locationCoords) {
+                        window.open(
+                          `https://www.google.com/maps/search/?api=1&query=${event.locationCoords.lat},${event.locationCoords.lng}`,
+                          '_blank'
+                        );
+                      } else {
+                        window.open(
+                          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`,
+                          '_blank'
+                        );
+                      }
+                    }}
+                    className="w-full gap-2 bg-rose-500 hover:bg-rose-600 text-white"
+                  >
+                    <Navigation className="h-4 w-4" />
+                    Open in Google Maps
+                  </Button>
                 </Card>
               </div>
 
               {/* Participants */}
-              {event.participants.length > 0 && (
+              {event.participants && event.participants.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold flex items-center gap-2">
                       <Users className="h-4 w-4 text-primary" />
                       {t("participants")} ({event.participants.length})
                     </h3>
-                    {event.participants.length > 4 && (
-                      <span className="text-sm text-muted-foreground">
-                        Swipe to see all →
-                      </span>
-                    )}
                   </div>
                   
-                  {/* Horizontal scrollable participant avatars */}
-                  <div className="relative">
-                    <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
-                      {event.participants.map((participant) => (
-                        <motion.button
-                          key={participant.id}
-                          whileHover={{ scale: 1.05, y: -2 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => handleUserClick(participant)}
-                          className="flex-shrink-0 w-24 snap-start group"
-                        >
-                          <div className="flex flex-col items-center gap-2">
-                            <div className="relative">
-                              <Avatar className="h-16 w-16 ring-2 ring-muted transition-all group-hover:ring-4 group-hover:ring-primary/40">
-                                <AvatarImage
-                                  src={participant.avatar}
-                                  alt={participant.name}
-                                />
-                                <AvatarFallback>{participant.name[0]}</AvatarFallback>
-                              </Avatar>
-                              {participant.id === event.host.id && (
-                                <div className="absolute -top-1 -right-1 h-5 w-5 bg-primary rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg">
-                                  ★
-                                </div>
-                              )}
-                            </div>
-                            <div className="text-center">
-                              <p className="text-sm font-medium truncate w-full group-hover:text-primary transition-colors">
-                                {participant.name.split(" ")[0]}
-                              </p>
-                              <p className="text-xs text-muted-foreground flex items-center justify-center gap-0.5">
-                                <Languages className="h-3 w-3" />
-                                {participant.languages[0]}
-                              </p>
-                            </div>
-                          </div>
-                        </motion.button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Desktop grid view for larger screens */}
-                  <div className="hidden md:grid md:grid-cols-4 lg:grid-cols-5 gap-3 mt-4">
+                  {/* Unified grid layout */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                     {event.participants.map((participant) => (
                       <motion.button
-                        key={`desktop-${participant.id}`}
+                        key={participant._id}
                         whileHover={{ scale: 1.03, y: -2 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => handleUserClick(participant)}
-                        className="p-3 rounded-lg border hover:border-primary/50 hover:bg-primary/5 transition-all text-left group"
+                        className="relative p-4 rounded-xl border-2 border-muted hover:border-primary/50 bg-gradient-to-br from-white to-muted/30 hover:shadow-lg transition-all group"
                       >
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-12 w-12 ring-2 ring-muted transition-all group-hover:ring-primary/40">
+                        {/* Host Star Badge */}
+                        {participant._id === event.host._id && (
+                          <div className="absolute -top-2 -right-2 h-7 w-7 bg-primary rounded-full flex items-center justify-center shadow-lg z-10 border-2 border-white">
+                            <span className="text-xs font-bold text-white">★</span>
+                          </div>
+                        )}
+                        
+                        <div className="flex flex-col items-center gap-3">
+                          <Avatar className="h-20 w-20 ring-4 ring-muted transition-all group-hover:ring-primary/40 shadow-md">
                             <AvatarImage
                               src={participant.avatar}
                               alt={participant.name}
                             />
-                            <AvatarFallback>{participant.name[0]}</AvatarFallback>
+                            <AvatarFallback className="text-lg">{participant.name[0]}</AvatarFallback>
                           </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">
+                          
+                          <div className="text-center w-full">
+                            <p className="font-semibold text-sm truncate w-full group-hover:text-primary transition-colors mb-1">
                               {participant.name}
                             </p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                               <Languages className="h-3 w-3" />
-                              {participant.languages[0]}
-                            </p>
+                              <span className="truncate">{participant.languages?.[0] || 'N/A'}</span>
+                            </div>
                           </div>
                         </div>
                       </motion.button>
@@ -326,24 +501,125 @@ export default function EventDetails() {
             </div>
           </Card>
 
+          {/* Join Requests Section (Only for Host) */}
+          {isHost && joinRequests.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
+            >
+              <Card className="p-6 border-amber-500 border-2 bg-amber-50/30">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Bell className="h-5 w-5 text-amber-600" />
+                    Pending Join Requests ({joinRequests.length})
+                  </h3>
+                </div>
+
+                <div className="space-y-4">
+                  {joinRequests.map((request) => (
+                    <Card key={request._id} className="p-4 bg-white">
+                      <div className="flex items-start gap-4">
+                        <Avatar
+                          className="h-12 w-12 cursor-pointer hover:ring-2 hover:ring-primary/40 transition-all"
+                          onClick={() => navigate(`/profile/${request.user._id}`)}
+                        >
+                          <AvatarImage src={request.user.avatar} alt={request.user.name} />
+                          <AvatarFallback>{request.user.name[0]}</AvatarFallback>
+                        </Avatar>
+
+                        <div className="flex-1 min-w-0">
+                          <button
+                            onClick={() => navigate(`/profile/${request.user._id}`)}
+                            className="font-semibold hover:text-primary transition-colors"
+                          >
+                            {request.user.name}
+                          </button>
+                          <div className="flex items-center gap-1.5 mt-1 mb-2">
+                            <Languages className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">
+                              {request.user.languages.join(", ")}
+                            </span>
+                          </div>
+                          
+                          {request.message && (
+                            <div className="bg-muted/50 rounded p-2 mb-2">
+                              <p className="text-sm italic text-muted-foreground">
+                                "{request.message}"
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1"
+                              onClick={() => handleDeclineRequest(request._id)}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              Decline
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="gap-1 bg-green-600 hover:bg-green-700"
+                              onClick={() => handleAcceptRequest(request._id)}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              Accept
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
           {/* Action Buttons */}
-          <div className="flex gap-4">
-            <Button
-              className="flex-1"
-              disabled={event.currentParticipants >= event.maxParticipants}
-              onClick={() => setIsJoinRequestOpen(true)}
-            >
-              {event.currentParticipants >= event.maxParticipants
-                ? "Event Full"
-                : t("send_join_request")}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => navigate(`/event/${event._id || event.id}/chat`)}
-            >
-              <MessageCircle className="h-5 w-5" />
-            </Button>
-          </div>
+          <Card className="sticky bottom-20 md:static p-4 bg-white border-2 shadow-lg">
+            {!isHost && (
+              <Button
+                className="w-full h-12"
+                onClick={() => navigate(`/event/${event._id}/chat`)}
+              >
+                <MessageCircle className="h-5 w-5 mr-2" />
+                Group Chat
+              </Button>
+            )}
+
+            {isHost && (
+              <div className="space-y-3">
+                <Button
+                  className="w-full h-12"
+                  onClick={() => navigate(`/event/${event._id}/chat`)}
+                >
+                  <MessageCircle className="h-5 w-5 mr-2" />
+                  Group Chat
+                </Button>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    variant="outline"
+                    className="h-12 gap-2"
+                    onClick={handleEditEvent}
+                  >
+                    <Edit2 className="h-4 w-4" />
+                    Edit Event
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-12 gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
       </main>
 
@@ -355,13 +631,67 @@ export default function EventDetails() {
         onViewFullProfile={handleViewFullProfile}
       />
 
-      {/* Join Request Modal */}
-      <JoinRequestModal
-        event={event}
-        isOpen={isJoinRequestOpen}
-        onClose={() => setIsJoinRequestOpen(false)}
-        onSubmit={handleJoinRequest}
-      />
+      {/* Location Map Modal */}
+      {event && (
+        <LocationMapModal
+          isOpen={isMapModalOpen}
+          onClose={() => setIsMapModalOpen(false)}
+          location={{
+            address: event.location,
+            coordinates: event.locationCoords,
+          }}
+          title={event.title}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="max-w-md w-full p-6">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="h-6 w-6 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold mb-2">Delete Event?</h3>
+                <p className="text-sm text-muted-foreground">
+                  Are you sure you want to delete "{event?.title}"? This action cannot be undone and all participants will be notified.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-red-600 hover:bg-red-700"
+                onClick={handleDeleteEvent}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Event
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Bottom Navigation */}
+      <BottomNav />
     </div>
   );
 }

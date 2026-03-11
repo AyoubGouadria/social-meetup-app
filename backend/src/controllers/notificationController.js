@@ -65,6 +65,17 @@ exports.markAsRead = async (req, res, next) => {
     notification.isRead = true;
     await notification.save();
 
+    // Get updated unread count
+    const unreadCount = await Notification.countDocuments({
+      recipient: req.user._id,
+      isRead: false
+    });
+
+    // Emit socket event to update unread count in real-time
+    if (global.io) {
+      global.io.to(`user_${req.user._id.toString()}`).emit('notifications_read', { unreadCount });
+    }
+
     res.status(200).json({
       success: true,
       data: notification
@@ -83,6 +94,11 @@ exports.markAllAsRead = async (req, res, next) => {
       { recipient: req.user._id, isRead: false },
       { isRead: true }
     );
+
+    // Emit socket event to update unread count in real-time
+    if (global.io) {
+      global.io.to(`user_${req.user._id.toString()}`).emit('notifications_read', { unreadCount: 0 });
+    }
 
     res.status(200).json({
       success: true,

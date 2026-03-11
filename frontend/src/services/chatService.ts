@@ -30,11 +30,11 @@ class ChatService {
     });
 
     this.socket.on('connect', () => {
-      console.log('✅ Connected to chat server');
+      // Connected to chat server
     });
 
     this.socket.on('disconnect', () => {
-      console.log('❌ Disconnected from chat server');
+      // Disconnected from chat server
     });
 
     this.socket.on('error', (error) => {
@@ -94,12 +94,41 @@ class ChatService {
     this.socket?.emit('typing_stop', { eventId });
   }
 
+  // Listen for real-time notifications
+  onNewNotification(callback: (notification: any) => void) {
+    this.socket?.on('new_notification', callback);
+  }
+
+  // Listen for notifications read event
+  onNotificationsRead(callback: (data: { unreadCount: number }) => void) {
+    this.socket?.on('notifications_read', callback);
+  }
+
+  // Remove notification listener
+  offNewNotification() {
+    this.socket?.off('new_notification');
+  }
+
+  // Remove notifications read listener
+  offNotificationsRead() {
+    this.socket?.off('notifications_read');
+  }
+
+  // REST API - Get user conversations
+  async getConversations() {
+    try {
+      const response = await api.get('/messages/conversations');
+      return response;
+    } catch (error) {
+      console.error('ChatService: Error fetching conversations', error);
+      throw error;
+    }
+  }
+
   // REST API - Get messages
   async getMessages(eventId: string, page = 1, limit = 50) {
     try {
-      console.log('ChatService: Fetching messages for event', eventId);
       const response = await api.get(`/messages/event/${eventId}?page=${page}&limit=${limit}`);
-      console.log('ChatService: Messages received', response);
       return response;
     } catch (error) {
       console.error('ChatService: Error fetching messages', error);

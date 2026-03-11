@@ -1,6 +1,7 @@
 const Event = require('../models/Event');
 const JoinRequest = require('../models/JoinRequest');
 const Notification = require('../models/Notification');
+const { reduceGPSPrecision } = require('../utils/geoPrivacy');
 
 // @desc    Get all events (with filters)
 // @route   GET /api/events
@@ -107,6 +108,17 @@ exports.createEvent = async (req, res, next) => {
     // Add host to request body
     req.body.host = req.user._id;
 
+    // CRITICAL: Reduce GPS precision for privacy (GDPR Article 5 - Data Minimization)
+    // Reduces exact coordinates to ~110m precision (3 decimal places)
+    if (req.body.coordinates && req.body.coordinates.lat && req.body.coordinates.lng) {
+      const { lat, lng } = reduceGPSPrecision(
+        req.body.coordinates.lat,
+        req.body.coordinates.lng,
+        3 // 3 decimals = ~110 meters precision
+      );
+      req.body.coordinates = { lat, lng };
+    }
+
     const event = await Event.create(req.body);
 
     // Populate host details
@@ -147,6 +159,16 @@ exports.updateEvent = async (req, res, next) => {
     // Prevent updating certain fields
     delete req.body.host;
     delete req.body.participants;
+
+    // CRITICAL: Reduce GPS precision for privacy if coordinates updated
+    if (req.body.coordinates && req.body.coordinates.lat && req.body.coordinates.lng) {
+      const { lat, lng } = reduceGPSPrecision(
+        req.body.coordinates.lat,
+        req.body.coordinates.lng,
+        3 // 3 decimals = ~110 meters precision
+      );
+      req.body.coordinates = { lat, lng };
+    }
 
     event = await Event.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
@@ -191,7 +213,7 @@ exports.deleteEvent = async (req, res, next) => {
     );
 
     for (const participantId of participants) {
-      await Notification.create({
+      const notification = await Notification.create({
         recipient: participantId,
         sender: req.user._id,
         type: 'event_cancelled',
@@ -199,6 +221,15 @@ exports.deleteEvent = async (req, res, next) => {
         message: `${event.title} has been cancelled by the host`,
         event: event._id
       });
+
+      // Populate notification for socket emission
+      await notification.populate('sender', 'name avatar');
+      await notification.populate('event', 'title');
+
+      // Emit real-time notification via socket.io
+      if (global.io) {
+        global.io.to(`user_${participantId.toString()}`).emit('new_notification', notification);
+      }
     }
 
     await event.deleteOne();
@@ -221,10 +252,39 @@ exports.getMyEvents = async (req, res, next) => {
       .populate('participants', 'name avatar city bio languages')
       .sort({ date: 1 });
 
+    // Clean up pending requests for events that have already passed
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const event of events) {
+      const eventDate = new Date(event.date);
+      eventDate.setHours(0, 0, 0, 0);
+
+      if (eventDate < today) {
+        // Delete all pending requests for this past event
+        await JoinRequest.deleteMany({ event: event._id, status: 'pending' });
+      }
+    }
+
+    // Add pending request count for each event (only future events will have pending requests now)
+    const eventsWithRequestCount = await Promise.all(
+      events.map(async (event) => {
+        const pendingCount = await JoinRequest.countDocuments({
+          event: event._id,
+          status: 'pending'
+        });
+        
+        return {
+          ...event.toObject(),
+          pendingRequestCount: pendingCount
+        };
+      })
+    );
+
     res.status(200).json({
       success: true,
-      count: events.length,
-      data: events
+      count: eventsWithRequestCount.length,
+      data: eventsWithRequestCount
     });
   } catch (error) {
     next(error);
@@ -291,7 +351,7 @@ exports.leaveEvent = async (req, res, next) => {
     await event.save();
 
     // Notify host
-    await Notification.create({
+    const notification = await Notification.create({
       recipient: event.host,
       sender: req.user._id,
       type: 'participant_left',
@@ -299,6 +359,15 @@ exports.leaveEvent = async (req, res, next) => {
       message: `${req.user.name} has left ${event.title}`,
       event: event._id
     });
+
+    // Populate notification for socket emission
+    await notification.populate('sender', 'name avatar');
+    await notification.populate('event', 'title');
+
+    // Emit real-time notification via socket.io
+    if (global.io) {
+      global.io.to(`user_${event.host.toString()}`).emit('new_notification', notification);
+    }
 
     res.status(200).json({
       success: true,

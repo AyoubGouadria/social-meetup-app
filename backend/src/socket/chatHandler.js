@@ -1,5 +1,6 @@
 const Message = require('../models/Message');
 const Event = require('../models/Event');
+const Notification = require('../models/Notification');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
@@ -36,6 +37,10 @@ const chatHandler = (io) => {
 
     // Store active user
     activeUsers.set(socket.userId, socket.id);
+
+    // Join user's personal room for notifications
+    socket.join(`user_${socket.userId}`);
+    console.log(`User ${socket.user.name} joined personal room`);
 
     // Join event rooms
     socket.on('join_event', async ({ eventId }) => {
@@ -103,6 +108,31 @@ const chatHandler = (io) => {
 
         // Emit to all users in event room
         io.to(`event_${eventId}`).emit('new_message', message);
+
+        // Create notifications for all participants except the sender
+        const participants = event.participants.filter(
+          p => p.toString() !== socket.userId.toString()
+        );
+
+        for (const participantId of participants) {
+          const notification = await Notification.create({
+            recipient: participantId,
+            sender: socket.userId,
+            type: 'new_message',
+            title: 'New Message',
+            message: `${socket.user.name} sent a message in ${event.title}`,
+            event: eventId
+          });
+
+          // Populate notification for socket emission
+          await notification.populate('sender', 'name avatar');
+          await notification.populate('event', 'title');
+
+          // Emit real-time notification via socket.io
+          if (global.io) {
+            global.io.to(`user_${participantId.toString()}`).emit('new_notification', notification);
+          }
+        }
       } catch (error) {
         socket.emit('error', { message: error.message });
       }

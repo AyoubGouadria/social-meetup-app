@@ -19,6 +19,8 @@ import { mockUsers, mockEvents } from "../utils/mockData";
 import authService from "../../services/authService";
 import userService from "../../services/userService";
 import { motion, AnimatePresence } from "motion/react";
+import { ReportDialog } from "../components/ReportDialog";
+import { BlockUserButton } from "../components/BlockUserButton";
 import {
   ArrowLeft,
   MapPin,
@@ -35,6 +37,17 @@ import {
   ChevronRight,
   X as CloseIcon,
   Maximize2,
+  User,
+  Briefcase,
+  GraduationCap,
+  Sparkles,
+  Phone,
+  Instagram,
+  Facebook,
+  Twitter,
+  Linkedin,
+  Target,
+  HeartHandshake,
 } from "lucide-react";
 
 export default function Profile() {
@@ -48,6 +61,10 @@ export default function Profile() {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
   
   // Fetch user data when component mounts or id changes
   useEffect(() => {
@@ -58,18 +75,32 @@ export default function Profile() {
         const loggedInUser = authService.getCurrentUser();
         
         if (!id) {
-          // No ID in URL - show logged-in user's profile
-          setUser(loggedInUser);
-          setIsOwnProfile(true);
+          // No ID in URL - fetch logged-in user's profile from backend for latest data
+          if (loggedInUser?._id) {
+            const fetchedUser = await userService.getUserProfile(loggedInUser._id);
+            setUser(fetchedUser);
+            setIsOwnProfile(true);
+            setLikesCount(fetchedUser.likesCount || fetchedUser.likedBy?.length || 0);
+          } else {
+            setUser(loggedInUser);
+            setIsOwnProfile(true);
+          }
         } else if (loggedInUser && id === loggedInUser._id) {
-          // ID matches logged-in user - show own profile
-          setUser(loggedInUser);
+          // ID matches logged-in user - fetch from backend for latest data
+          const fetchedUser = await userService.getUserProfile(id);
+          setUser(fetchedUser);
           setIsOwnProfile(true);
+          setLikesCount(fetchedUser.likesCount || fetchedUser.likedBy?.length || 0);
         } else {
           // Different user - fetch from backend API
           const fetchedUser = await userService.getUserProfile(id);
           setUser(fetchedUser);
           setIsOwnProfile(false);
+          
+          // Check if current user has liked this profile
+          const likedByArray = fetchedUser.likedBy || [];
+          setIsLiked(likedByArray.includes(loggedInUser?._id));
+          setLikesCount(fetchedUser.likesCount || likedByArray.length || 0);
         }
       } catch (error) {
         console.error("Error fetching user profile:", error);
@@ -87,9 +118,39 @@ export default function Profile() {
     fetchUserData();
   }, [id]);
 
-  const userEvents = mockEvents.filter((e) =>
+  // Handle like/unlike
+  const handleLike = async () => {
+    if (isOwnProfile || !user) return;
+    
+    try {
+      if (isLiked) {
+        await userService.unlikeUser(user._id || user.id);
+        setIsLiked(false);
+        setLikesCount(prev => Math.max(0, prev - 1));
+      } else {
+        await userService.likeUser(user._id || user.id);
+        setIsLiked(true);
+        setLikesCount(prev => prev + 1);
+      }
+    } catch (error: any) {
+      console.error('Error liking/unliking user:', error);
+    }
+  };
+
+  // Events where user is a participant
+  const joinedEvents = mockEvents.filter((e) =>
     e.participants.some((p) => p.id === user?.id || p.id === user?._id)
   );
+
+  // Events created by the user (as host)
+  const createdEvents = mockEvents.filter((e) => {
+    const hostId = (e.host as any)?._id || e.host?.id;
+    const userId = (user as any)?._id || user?.id;
+    return hostId === userId;
+  });
+
+  // All events (joined + created)
+  const userEvents = [...joinedEvents, ...createdEvents];
 
   const upcomingEvents = userEvents.filter(
     (e) => new Date(e.date) >= new Date()
@@ -190,14 +251,19 @@ export default function Profile() {
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-semibold">Profile</h1>
+          <h1 className="text-lg font-semibold">{isOwnProfile ? "About Me" : user?.name || "Profile"}</h1>
           {isOwnProfile ? (
             <Button variant="ghost" size="icon" onClick={() => navigate("/settings")}>
               <Settings className="h-5 w-5" />
             </Button>
           ) : (
-            <Button variant="ghost" size="icon">
-              <Heart className="h-5 w-5" />
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleLike}
+              className={isLiked ? "text-pink-600" : ""}
+            >
+              <Heart className={`h-5 w-5 ${isLiked ? "fill-current" : ""}`} />
             </Button>
           )}
         </div>
@@ -300,27 +366,49 @@ export default function Profile() {
                   </div>
 
                   {/* Quick Stats */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-primary/5 rounded-lg p-3 text-center border border-primary/10">
-                      <Users className="h-5 w-5 mx-auto mb-1.5 text-primary" />
-                      <p className="text-xl font-bold text-primary">
-                        {userEvents.length}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Created Events */}
+                    <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-xl p-4 text-center border border-primary/20 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 mb-2">
+                        <Calendar className="h-5 w-5 text-primary" />
+                      </div>
+                      <p className="text-2xl font-bold text-primary mb-1">
+                        {user.hostedEventsCount || 0}
                       </p>
-                      <p className="text-xs text-muted-foreground">Events</p>
+                      <p className="text-xs font-medium text-muted-foreground">Created Events</p>
                     </div>
-                    <div className="bg-muted/30 rounded-lg p-3 text-center border">
-                      <CheckCircle2 className="h-5 w-5 mx-auto mb-1.5 text-green-600" />
-                      <p className="text-xl font-bold">{user.isVerified ? "Yes" : "No"}</p>
-                      <p className="text-xs text-muted-foreground">Verified</p>
-                    </div>
-                    <div className="bg-muted/30 rounded-lg p-3 text-center border">
-                      <Calendar className="h-5 w-5 mx-auto mb-1.5 text-muted-foreground" />
-                      <p className="text-xl font-bold">
-                        {user.createdAt 
-                          ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-                          : 'N/A'}
+
+                    {/* Joined Events */}
+                    <div className="bg-gradient-to-br from-blue-500/10 to-blue-500/5 rounded-xl p-4 text-center border border-blue-500/20 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/15 mb-2">
+                        <Users className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-blue-600 mb-1">
+                        {user.joinedEventsCount || 0}
                       </p>
-                      <p className="text-xs text-muted-foreground">Joined</p>
+                      <p className="text-xs font-medium text-muted-foreground">Joined Events</p>
+                    </div>
+
+                    {/* Verified Status */}
+                    <div className="bg-gradient-to-br from-green-500/10 to-green-500/5 rounded-xl p-4 text-center border border-green-500/20 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-green-500/15 mb-2">
+                        <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-green-600 mb-1">
+                        {user.isVerified ? "Yes" : "No"}
+                      </p>
+                      <p className="text-xs font-medium text-muted-foreground">Verified</p>
+                    </div>
+
+                    {/* Likes */}
+                    <div className="bg-gradient-to-br from-pink-500/10 to-pink-500/5 rounded-xl p-4 text-center border border-pink-500/20 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/15 mb-2">
+                        <Heart className="h-5 w-5 text-pink-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-pink-600 mb-1">
+                        {likesCount}
+                      </p>
+                      <p className="text-xs font-medium text-muted-foreground">Likes</p>
                     </div>
                   </div>
 
@@ -343,29 +431,287 @@ export default function Profile() {
                     </div>
                   </div>
 
+                  {/* Personal Information */}
+                  <div className="bg-muted/30 rounded-lg p-4">
+                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
+                      Personal Information
+                    </h3>
+                    {(user.age || user.gender || user.occupation || user.education || user.relationshipStatus || user.phoneNumber) ? (
+                      <div className="grid grid-cols-2 gap-4">
+                        {user.age && (
+                          <div className="flex items-start gap-2">
+                            <User className="h-4 w-4 text-primary mt-0.5" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Age</p>
+                              <p className="font-medium">{user.age} years old</p>
+                            </div>
+                          </div>
+                        )}
+                        {user.gender && user.gender !== 'Prefer not to say' && (
+                          <div className="flex items-start gap-2">
+                            <User className="h-4 w-4 text-primary mt-0.5" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Gender</p>
+                              <p className="font-medium">{user.gender}</p>
+                            </div>
+                          </div>
+                        )}
+                        {user.occupation && (
+                          <div className="flex items-start gap-2">
+                            <Briefcase className="h-4 w-4 text-primary mt-0.5" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Occupation</p>
+                              <p className="font-medium">{user.occupation}</p>
+                            </div>
+                          </div>
+                        )}
+                        {user.education && (
+                          <div className="flex items-start gap-2">
+                            <GraduationCap className="h-4 w-4 text-primary mt-0.5" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Education</p>
+                              <p className="font-medium">{user.education}</p>
+                            </div>
+                          </div>
+                        )}
+                        {user.relationshipStatus && user.relationshipStatus !== 'Prefer not to say' && (
+                          <div className="flex items-start gap-2">
+                            <HeartHandshake className="h-4 w-4 text-primary mt-0.5" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Relationship</p>
+                              <p className="font-medium">{user.relationshipStatus}</p>
+                            </div>
+                          </div>
+                        )}
+                        {user.phoneNumber && (
+                          <div className="flex items-start gap-2">
+                            <Phone className="h-4 w-4 text-primary mt-0.5" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Phone</p>
+                              <p className="font-medium">{user.phoneNumber}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-muted-foreground">
+                          {isOwnProfile ? "Add personal information to help others get to know you" : "No personal information added yet"}
+                        </p>
+                        {isOwnProfile && (
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            onClick={() => navigate("/settings")}
+                            className="mt-2"
+                          >
+                            Add Information
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Interests */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold">Interests</span>
+                    </div>
+                    {user.interests && user.interests.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {user.interests.map((interest) => (
+                          <Badge
+                            key={interest}
+                            variant="outline"
+                            className="rounded-full px-3 py-1.5 bg-gradient-to-r from-primary/10 to-primary/5"
+                          >
+                            {interest}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-3 bg-muted/30 rounded-lg">
+                        <p className="text-sm text-muted-foreground">
+                          {isOwnProfile ? "Add your interests to connect with like-minded people" : "No interests added yet"}
+                        </p>
+                        {isOwnProfile && (
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            onClick={() => navigate("/settings")}
+                            className="mt-1"
+                          >
+                            Add Interests
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Looking For */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Target className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold">Looking For</span>
+                    </div>
+                    {user.lookingFor && user.lookingFor.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {user.lookingFor.map((item) => (
+                          <Badge
+                            key={item}
+                            variant="default"
+                            className="rounded-full px-3 py-1.5"
+                          >
+                            {item}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-3 bg-muted/30 rounded-lg">
+                        <p className="text-sm text-muted-foreground">
+                          {isOwnProfile ? "Let others know what you're looking for" : "Not specified"}
+                        </p>
+                        {isOwnProfile && (
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            onClick={() => navigate("/settings")}
+                            className="mt-1"
+                          >
+                            Add Preferences
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Social Media */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <MessageCircle className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold">Social Media</span>
+                    </div>
+                    {user.socialMedia && (user.socialMedia.instagram || user.socialMedia.facebook || user.socialMedia.twitter || user.socialMedia.linkedin) ? (
+                      <div className="flex flex-wrap gap-3">
+                        {user.socialMedia.instagram && (
+                          <a 
+                            href={user.socialMedia.instagram.startsWith('http') ? user.socialMedia.instagram : `https://instagram.com/${user.socialMedia.instagram.replace('@', '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:shadow-lg transition-shadow"
+                          >
+                            <Instagram className="h-4 w-4" />
+                            <span className="text-sm font-medium">Instagram</span>
+                          </a>
+                        )}
+                        {user.socialMedia.facebook && (
+                          <a 
+                            href={user.socialMedia.facebook.startsWith('http') ? user.socialMedia.facebook : `https://facebook.com/${user.socialMedia.facebook}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white hover:shadow-lg transition-shadow"
+                          >
+                            <Facebook className="h-4 w-4" />
+                            <span className="text-sm font-medium">Facebook</span>
+                          </a>
+                        )}
+                        {user.socialMedia.twitter && (
+                          <a 
+                            href={user.socialMedia.twitter.startsWith('http') ? user.socialMedia.twitter : `https://twitter.com/${user.socialMedia.twitter.replace('@', '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black text-white hover:shadow-lg transition-shadow"
+                          >
+                            <Twitter className="h-4 w-4" />
+                            <span className="text-sm font-medium">Twitter</span>
+                          </a>
+                        )}
+                        {user.socialMedia.linkedin && (
+                          <a 
+                            href={user.socialMedia.linkedin.startsWith('http') ? user.socialMedia.linkedin : `https://linkedin.com/in/${user.socialMedia.linkedin}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-700 text-white hover:shadow-lg transition-shadow"
+                          >
+                            <Linkedin className="h-4 w-4" />
+                            <span className="text-sm font-medium">LinkedIn</span>
+                          </a>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-3 bg-muted/30 rounded-lg">
+                        <p className="text-sm text-muted-foreground">
+                          {isOwnProfile ? "Connect your social media accounts" : "No social media links added"}
+                        </p>
+                        {isOwnProfile && (
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            onClick={() => navigate("/settings")}
+                            className="mt-1"
+                          >
+                            Add Social Media
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Actions */}
                   {!isOwnProfile && (
-                    <div className="flex gap-3 pt-2">
+                    <div className="space-y-3 pt-2">
+                      {/* Primary Action */}
                       <Button
                         className="w-full gap-2"
                         onClick={() => setIsInviteModalOpen(true)}
+                        disabled={isBlocked}
                       >
                         <Send className="h-4 w-4" />
-                        Invite to Event
+                        {isBlocked ? 'User Blocked' : 'Invite to Event'}
                       </Button>
-                      {/* Direct messaging not yet implemented */}
-                      {/* <Button
-                        variant="outline"
-                        className="flex-1 gap-2"
-                        disabled
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                        Message
-                      </Button> */}
+
+                      {/* Moderation Actions */}
+                      {!isBlocked && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsReportDialogOpen(true)}
+                            className="gap-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+                          >
+                            <Bell className="h-4 w-4" />
+                            Report
+                          </Button>
+                          <BlockUserButton
+                            userId={user._id}
+                            userName={user.name}
+                            variant="outline"
+                            size="sm"
+                            onBlockSuccess={() => {
+                              setIsBlocked(true);
+                              // Optionally navigate away
+                              // navigate('/home');
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {isBlocked && (
+                        <div className="text-center py-2">
+                          <p className="text-sm text-destructive font-medium">
+                            You have blocked this user. Go to Settings to unblock.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                   {isOwnProfile && (
-                    <Button className="w-full" variant="outline">
+                    <Button 
+                      className="w-full" 
+                      variant="outline"
+                      onClick={() => navigate("/settings")}
+                    >
                       Edit Profile
                     </Button>
                   )}
@@ -477,32 +823,6 @@ export default function Profile() {
                     </Card>
                   ))}
                 </div>
-              </motion.div>
-            )}
-
-            {/* No Events State */}
-            {userEvents.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.4, delay: 0.3 }}
-              >
-                <Card className="p-12 text-center">
-                  <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-4">
-                    <Calendar className="h-10 w-10 text-primary" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-2">No Events Yet</h3>
-                  <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                    {isOwnProfile
-                      ? "Start exploring and join events to meet new people!"
-                      : "This user hasn't joined any events yet."}
-                  </p>
-                  {isOwnProfile && (
-                    <Button onClick={() => navigate("/home")} size="lg">
-                      {t("explore_events")}
-                    </Button>
-                  )}
-                </Card>
               </motion.div>
             )}
           </div>
@@ -690,6 +1010,17 @@ export default function Profile() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Report Dialog */}
+      {!isOwnProfile && user && (
+        <ReportDialog
+          open={isReportDialogOpen}
+          onOpenChange={setIsReportDialogOpen}
+          type="user"
+          targetId={user._id}
+          targetName={user.name}
+        />
+      )}
     </div>
   );
 }

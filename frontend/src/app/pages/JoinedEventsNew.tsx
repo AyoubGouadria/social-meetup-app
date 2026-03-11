@@ -11,6 +11,7 @@ import { BottomNav } from "../components/BottomNav";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import eventService, { Event } from "../../services/eventService";
 import joinRequestService, { JoinRequest } from "../../services/joinRequestService";
+import { useToast } from "../components/ui/use-toast";
 import { motion } from "motion/react";
 import {
   Calendar,
@@ -27,6 +28,7 @@ import {
 export default function JoinedEvents() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const { toast } = useToast();
 
   const [joinedEvents, setJoinedEvents] = useState<Event[]>([]);
   const [pendingRequests, setPendingRequests] = useState<JoinRequest[]>([]);
@@ -78,51 +80,15 @@ export default function JoinedEvents() {
         transition={{ delay: index * 0.1 }}
       >
         <Card
-          className="p-5 hover:shadow-lg transition-all cursor-pointer"
+          className="overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group border-l-4 border-l-primary/20 hover:border-l-primary"
           onClick={() => navigate(`/event/${event._id}`)}
         >
-          <div className="space-y-4">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-lg font-bold mb-1 truncate">{event.title}</h3>
-                <p className="text-sm text-muted-foreground line-clamp-2">
-                  {event.description}
-                </p>
-              </div>
-            </div>
-
-            {/* Event Details Grid */}
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Calendar className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">
-                  {new Date(event.date).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Clock className="h-4 w-4 flex-shrink-0" />
-                <span>{event.time}</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <MapPin className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">{event.location}</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Users className="h-4 w-4 flex-shrink-0" />
-                <span>
-                  {event.participants?.length || 0}/{event.maxParticipants}
-                </span>
-              </div>
-            </div>
-
+          {/* Header Section */}
+          <div className="p-5 pb-4 bg-gradient-to-br from-muted/30 to-background">
             {/* Host Info */}
-            <div className="flex items-center gap-3 pt-2 border-t">
+            <div className="flex items-center gap-2.5 mb-4">
               <Avatar
-                className="h-10 w-10 cursor-pointer hover:ring-2 hover:ring-primary/40 transition-all"
+                className="h-9 w-9 cursor-pointer hover:ring-2 hover:ring-primary transition-all flex-shrink-0 ring-1 ring-muted"
                 onClick={(e) => {
                   e.stopPropagation();
                   navigate(`/profile/${event.host._id}`);
@@ -132,32 +98,150 @@ export default function JoinedEvents() {
                 <AvatarFallback>{event.host.name[0]}</AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground">Hosted by</p>
+                <p className="text-xs text-muted-foreground font-medium">Hosted by</p>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate(`/profile/${event.host._id}`);
                   }}
-                  className="text-sm font-medium hover:text-primary transition-colors truncate block w-full text-left"
+                  className="text-sm font-semibold hover:text-primary transition-colors truncate block w-full text-left"
                 >
                   {event.host.name}
                 </button>
               </div>
+            </div>
+            
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-xl font-bold mb-2 truncate group-hover:text-primary transition-colors">
+                  {event.title}
+                </h3>
+                <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                  {event.description}
+                </p>
+              </div>
+            </div>
+          </div>
 
-              {/* Action Buttons */}
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-2"
+          {/* Event Details Section */}
+          <div className="px-5 py-4 bg-background">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-2.5 text-sm">
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Calendar className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground font-medium">Date</p>
+                  <p className="text-sm font-semibold truncate">
+                    {new Date(event.date).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2.5 text-sm">
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Clock className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground font-medium">Time</p>
+                  <p className="text-sm font-semibold">{event.time}</p>
+                </div>
+              </div>
+              
+              <button
+                className="flex items-center gap-2.5 text-sm w-full hover:bg-primary/5 -mx-2 px-2 py-1 rounded-lg transition-colors text-left"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate(`/event/${event._id}/chat`);
+                  if (event.locationCoords) {
+                    window.open(
+                      `https://www.google.com/maps/search/?api=1&query=${event.locationCoords.lat},${event.locationCoords.lng}`,
+                      '_blank'
+                    );
+                  } else {
+                    window.open(
+                      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`,
+                      '_blank'
+                    );
+                  }
                 }}
               >
-                <MessageCircle className="h-4 w-4" />
-                <span className="hidden sm:inline">Chat</span>
-              </Button>
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <MapPin className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground font-medium">Location</p>
+                  <p className="text-sm font-semibold truncate">{event.location}</p>
+                  <p className="text-xs text-primary font-medium">Tap to open in Maps</p>
+                </div>
+              </button>
+              
+              <div className="flex items-center gap-2.5 text-sm">
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Users className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground font-medium">Attendees</p>
+                  <p className="text-sm font-semibold">
+                    {event.participants?.length || 0}/{event.maxParticipants}
+                  </p>
+                </div>
+              </div>
             </div>
+          </div>
+
+          {/* Footer - Participants Section */}
+          <div className="px-5 py-4 bg-background border-t flex items-center justify-between gap-4">
+            {/* Participants */}
+            {event.participants && event.participants.length > 0 ? (
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground font-medium mb-2">
+                    Participants ({event.participants.length})
+                  </p>
+                  <div className="flex -space-x-2">
+                    {event.participants.slice(0, 8).map((participant) => (
+                      <Avatar
+                        key={participant._id}
+                        className="h-9 w-9 border-2 border-background cursor-pointer hover:z-10 hover:scale-110 transition-all ring-2 ring-muted/50 hover:ring-primary/50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/profile/${participant._id}`);
+                        }}
+                      >
+                        <AvatarImage
+                          src={participant.avatar}
+                          alt={participant.name}
+                        />
+                        <AvatarFallback className="text-xs">{participant.name[0]}</AvatarFallback>
+                      </Avatar>
+                    ))}
+                    {event.participants.length > 8 && (
+                      <div className="h-9 w-9 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-semibold ring-2 ring-muted/50">
+                        +{event.participants.length - 8}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1" />
+            )}
+
+            {/* Chat Button */}
+            <Button
+              size="sm"
+              className="gap-2 flex-shrink-0 shadow-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/event/${event._id}/chat`);
+              }}
+            >
+              <MessageCircle className="h-4 w-4" />
+              Chat
+            </Button>
           </div>
         </Card>
       </motion.div>
@@ -283,10 +367,19 @@ export default function JoinedEvents() {
                             })}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
+                        <button
+                          className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(
+                              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(request.event.location)}`,
+                              '_blank'
+                            );
+                          }}
+                        >
                           <MapPin className="h-4 w-4 flex-shrink-0" />
                           <span className="truncate">{request.event.location}</span>
-                        </div>
+                        </button>
                       </div>
 
                       {/* Actions */}
@@ -300,8 +393,17 @@ export default function JoinedEvents() {
                             try {
                               await joinRequestService.cancelJoinRequest(request._id);
                               setPendingRequests(prev => prev.filter(r => r._id !== request._id));
-                            } catch (error) {
+                              toast({
+                                title: "Request Cancelled",
+                                description: "Your join request has been cancelled successfully.",
+                              });
+                            } catch (error: any) {
                               console.error("Error canceling request:", error);
+                              toast({
+                                title: "Error",
+                                description: error.message || "Failed to cancel request. Please try again.",
+                                variant: "destructive",
+                              });
                             }
                           }}
                         >

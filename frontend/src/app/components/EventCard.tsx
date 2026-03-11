@@ -1,4 +1,4 @@
-import { MapPin, Calendar, Clock, Users, Languages } from "lucide-react";
+import { MapPin, Calendar, Clock, Users, Languages, Bell, Navigation } from "lucide-react";
 import { Event } from "../../services/eventService";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -6,6 +6,8 @@ import { Button } from "./ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
 import { useLanguage } from "../contexts/LanguageContext";
 import { motion } from "motion/react";
+import { useState } from "react";
+import { LocationMapModal } from "./LocationMapModal";
 
 interface EventCardProps {
   event: Event;
@@ -13,10 +15,13 @@ interface EventCardProps {
   onClick?: () => void;
   onHostClick?: () => void;
   onParticipantClick?: (participant: Event['participants'][0]) => void;
+  onViewRequests?: () => void;
+  showRequestsBadge?: boolean;
 }
 
-export function EventCard({ event, onJoin, onClick, onHostClick, onParticipantClick }: EventCardProps) {
+export function EventCard({ event, onJoin, onClick, onHostClick, onParticipantClick, onViewRequests, showRequestsBadge = false }: EventCardProps) {
   const { t } = useLanguage();
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 
   const categoryColors: Record<Event["category"], string> = {
     coffee: "bg-amber-100 text-amber-800",
@@ -29,9 +34,29 @@ export function EventCard({ event, onJoin, onClick, onHostClick, onParticipantCl
 
   return (
     <Card 
-      className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+      className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer relative"
       onClick={onClick}
     >
+      {/* Pending Requests Badge */}
+      {showRequestsBadge && event.pendingRequestCount && event.pendingRequestCount > 0 && (
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className="absolute top-3 right-3 z-10"
+        >
+          <Badge 
+            className="bg-amber-500 hover:bg-amber-600 text-white gap-1.5 px-2.5 py-1 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewRequests?.();
+            }}
+          >
+            <Bell className="h-3.5 w-3.5" />
+            {event.pendingRequestCount} {event.pendingRequestCount === 1 ? 'request' : 'requests'}
+          </Badge>
+        </motion.div>
+      )}
+      
       <div className="p-6 space-y-4">
         {/* Host Info */}
         <div className="flex items-center gap-3">
@@ -78,9 +103,27 @@ export function EventCard({ event, onJoin, onClick, onHostClick, onParticipantCl
             <Calendar className="h-4 w-4 flex-shrink-0" />
             <span>{new Date(event.date).toLocaleDateString()} at {event.time}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 flex-shrink-0" />
-            <span className="truncate">{event.location}</span>
+          <div className="flex items-start gap-2 group">
+            <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5 text-primary" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="truncate font-medium text-foreground">{event.location}</span>
+                {event.locationCoords && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsMapModalOpen(true);
+                    }}
+                  >
+                    <Navigation className="h-3 w-3" />
+                    View on Map
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 flex-shrink-0" />
@@ -140,6 +183,17 @@ export function EventCard({ event, onJoin, onClick, onHostClick, onParticipantCl
           </Button>
         )}
       </div>
+      
+      {/* Location Map Modal */}
+      <LocationMapModal
+        isOpen={isMapModalOpen}
+        onClose={() => setIsMapModalOpen(false)}
+        location={{
+          address: event.location,
+          coordinates: event.locationCoords,
+        }}
+        title={event.title}
+      />
     </Card>
   );
 }

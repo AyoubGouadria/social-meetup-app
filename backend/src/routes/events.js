@@ -18,7 +18,7 @@ const {
 const eventValidation = [
   body('title').trim().notEmpty().withMessage('Title is required'),
   body('description').trim().notEmpty().withMessage('Description is required'),
-  body('category').isIn(['coffee', 'walk', 'study', 'gym', 'explore', 'other']).withMessage('Invalid category'),
+  body('category').trim().isLength({ min: 3, max: 30 }).withMessage('Category must be between 3 and 30 characters'),
   body('date').isISO8601().withMessage('Valid date is required'),
   body('time').notEmpty().withMessage('Time is required'),
   body('location').notEmpty().withMessage('Location is required'),

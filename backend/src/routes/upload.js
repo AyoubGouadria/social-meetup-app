@@ -2,12 +2,13 @@ const express = require('express');
 const router = express.Router();
 const upload = require('../middleware/upload');
 const { uploadImage } = require('../config/cloudinary');
+const { protect } = require('../middleware/auth');
 const fs = require('fs').promises;
 
 // @desc    Upload image
 // @route   POST /api/upload/image
-// @access  Public (can be protected later)
-router.post('/image', upload.single('image'), async (req, res) => {
+// @access  Private (Protected - requires authentication)
+router.post('/image', protect, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -49,8 +50,8 @@ router.post('/image', upload.single('image'), async (req, res) => {
 
 // @desc    Upload multiple images
 // @route   POST /api/upload/images
-// @access  Public (can be protected later)
-router.post('/images', upload.array('images', 6), async (req, res) => {
+// @access  Private (Protected - requires authentication)
+router.post('/images', protect, upload.array('images', 6), async (req, res) => {
   const uploadedFiles = [];
   
   try {

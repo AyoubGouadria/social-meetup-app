@@ -7,15 +7,17 @@ import { Badge } from "../components/ui/badge";
 import { Header } from "../components/Header";
 import { EventCard } from "../components/EventCard";
 import { ProfilePreviewModal } from "../components/ProfilePreviewModal";
+import { LocationMapModal } from "../components/LocationMapModal";
 import { BottomNav } from "../components/BottomNav";
 import { User } from "../utils/mockData";
 import eventService, { Event } from "../../services/eventService";
 import joinRequestService from "../../services/joinRequestService";
 import { useToast } from "../components/ui/use-toast";
+import { calculateDistance } from "../../lib/utils";
 import { 
   Plus, MapPin, Calendar, Clock, X, Heart, 
   MessageCircle, Coffee, Dumbbell, BookOpen, 
-  Footprints, Compass, Loader2, Users
+  Footprints, Compass, Loader2, Users, Navigation, Languages
 } from "lucide-react";
 import TinderCard from "react-tinder-card";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
@@ -35,10 +37,31 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"swipe" | "grid">("swipe");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [selectedMapEvent, setSelectedMapEvent] = useState<Event | null>(null);
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     fetchEvents();
+    getUserLocation();
   }, []);
+
+  const getUserLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+        },
+        (error) => {
+          console.log("Location access denied or unavailable:", error);
+          // Continue without location - distance filter won't work
+        }
+      );
+    }
+  };
 
   const fetchEvents = async () => {
     try {
@@ -66,12 +89,26 @@ export default function Home() {
 
   const filteredEvents = useMemo(() => {
     return events.filter((event) => {
+      // Category filter
       if (filters.category !== "all" && event.category !== filters.category) return false;
-      // TODO: Add distance calculation based on locationCoords
+      
+      // Distance filter - only apply if user location and event coordinates are available
+      if (userLocation && event.locationCoords) {
+        const distance = calculateDistance(
+          userLocation.lat,
+          userLocation.lng,
+          event.locationCoords.lat,
+          event.locationCoords.lng
+        );
+        if (distance > filters.distance) return false;
+      }
+      
+      // Language filter
       if (filters.language !== "all" && !event.languages.includes(filters.language)) return false;
+      
       return true;
     });
-  }, [events, filters]);
+  }, [events, filters, userLocation]);
 
   const handleSwipe = async (direction: string, eventId: string) => {
     if (direction === "right") {
@@ -91,10 +128,39 @@ export default function Home() {
         });
       }
     }
-    // Remove from deck after swipe
+    
+    // Remove from deck after swipe animation completes
     setTimeout(() => {
       setEvents(events.filter((e) => e._id !== eventId));
     }, 300);
+  };
+
+  const handlePass = (eventId: string) => {
+    // Remove event from list after animation
+    setTimeout(() => {
+      setEvents(events.filter((e) => e._id !== eventId));
+    }, 300);
+  };
+
+  const handleJoin = async (eventId: string) => {
+    try {
+      await joinRequestService.createJoinRequest(eventId);
+      toast({
+        title: "Request Sent!",
+        description: "Your join request has been sent to the host.",
+      });
+      // Remove event from list after animation
+      setTimeout(() => {
+        setEvents(events.filter((e) => e._id !== eventId));
+      }, 300);
+    } catch (error: any) {
+      console.error("Error sending join request:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send join request. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const categoryIcons: Record<string, any> = {
@@ -152,135 +218,246 @@ export default function Home() {
                 <>
                   {filteredEvents.map((event, index) => {
                     const Icon = categoryIcons[event.category] || Users;
+                    const isTopCard = index === 0;
+                    
                     return (
-                      <TinderCard
+                      <div
                         key={event._id}
-                        onSwipe={(dir) => handleSwipe(dir, event._id)}
-                        preventSwipe={["up", "down"]}
                         className="absolute inset-0"
+                        style={{
+                          zIndex: filteredEvents.length - index,
+                          opacity: isTopCard ? 1 : 0,
+                          transform: isTopCard ? 'scale(1)' : 'scale(0.95)',
+                          transition: 'opacity 0.3s ease, transform 0.3s ease',
+                          pointerEvents: isTopCard ? 'auto' : 'none'
+                        }}
                       >
-                        <Card className="h-full overflow-hidden cursor-grab active:cursor-grabbing">
+                        <TinderCard
+                          onSwipe={(dir) => handleSwipe(dir, event._id)}
+                          preventSwipe={["up", "down"]}
+                          className="h-full w-full"
+                        >
+                          <Card className="h-full overflow-hidden shadow-xl cursor-grab active:cursor-grabbing">
                           <div className="h-full flex flex-col">
-                            {/* Event Image */}
-                            <div className="relative h-64 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                              <Icon className="h-24 w-24 text-primary/30" />
+                            {/* Hero Section with Category */}
+                            <div className="relative h-48 bg-gradient-to-br from-primary via-primary/80 to-primary/60 overflow-hidden">
+                              <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIxLTEuNzktNC00LTRzLTQgMS43OS00IDQgMS43OSA0IDQgNCA0LTEuNzkgNC00em0wLTEwYzAtMi4yMS0xLjc5LTQtNC00cy00IDEuNzktNCA0IDEuNzkgNCA0IDQgNC0xLjc5IDQtNHptMC0xMGMwLTIuMjEtMS43OS00LTQtNHMtNCAxLjc5LTQgNCAxLjc5IDQgNCA0IDQtMS43OSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30"></div>
+                              <div className="absolute top-4 left-4 right-4 flex items-start justify-between">
+                                <Badge className="bg-white/95 text-foreground hover:bg-white border-0 capitalize text-sm px-3 py-1.5 shadow-lg">
+                                  <Icon className="h-3.5 w-3.5 mr-1.5" />
+                                  {t(event.category as any)}
+                                </Badge>
+                                {event.locationCoords && (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    className="bg-white/95 hover:bg-white text-foreground shadow-lg h-8 px-3"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedMapEvent(event);
+                                      setIsMapModalOpen(true);
+                                    }}
+                                  >
+                                    <Navigation className="h-3.5 w-3.5 mr-1.5" />
+                                    <span className="truncate max-w-[120px]">
+                                      {(() => {
+                                        const parts = event.location.split(',').map(p => p.trim());
+                                        // Try to find the city (usually at index 3, or fallback to first non-numeric part)
+                                        return parts[3] || parts.find(p => p && isNaN(Number(p))) || parts[0];
+                                      })()}
+                                    </span>
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/60 to-transparent">
+                                <h2 className="text-2xl font-bold text-white mb-1 line-clamp-2">{event.title}</h2>
+                                <div className="flex items-center gap-2 text-white/90 text-sm">
+                                  <Clock className="h-3.5 w-3.5" />
+                                  <span className="font-medium">
+                                    {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {event.time}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
 
-                            {/* Event Info */}
-                            <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-                              <div className="flex items-start gap-3">
-                                <motion.button
-                                  whileHover={{ scale: 1.05 }}
-                                  whileTap={{ scale: 0.95 }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleUserClick(event.host);
-                                  }}
-                                  className="flex-shrink-0"
-                                >
-                                  <Avatar className="h-12 w-12 ring-2 ring-muted transition-all hover:ring-primary/40">
-                                    <AvatarImage
-                                      src={event.host.avatar}
-                                      alt={event.host.name}
-                                    />
-                                    <AvatarFallback>{event.host.name[0]}</AvatarFallback>
-                                  </Avatar>
-                                </motion.button>
-                                <div className="flex-1 min-w-0">
-                                  <h2 className="text-2xl font-bold">{event.title}</h2>
-                                  <button
+                            {/* Content Section */}
+                            <div className="flex-1 overflow-y-auto">
+                              {/* Host Info */}
+                              <div className="px-6 py-4 border-b bg-muted/30">
+                                <div className="flex items-center gap-3">
+                                  <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleUserClick(event.host);
                                     }}
-                                    className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                                    className="flex-shrink-0"
                                   >
-                                    Hosted by {event.host.name}
-                                  </button>
-                                </div>
-                              </div>
-
-                              <p className="text-muted-foreground">{event.description}</p>
-
-                              <div className="space-y-2 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                                  <span>
-                                    {new Date(event.date).toLocaleDateString()} at {event.time}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                                  <span>{event.location}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Users className="h-4 w-4 text-muted-foreground" />
-                                  <span>
-                                    {event.participants?.length || 0}/{event.maxParticipants}{" "}
-                                    {t("participants").toLowerCase()}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Participants Avatars */}
-                              {event.participants && event.participants.length > 0 && (
-                                <div className="flex items-center gap-2">
-                                  <div className="flex -space-x-2">
-                                    {event.participants.slice(0, 5).map((participant) => (
-                                      <motion.button
-                                        key={participant._id}
-                                        whileHover={{ scale: 1.1, zIndex: 10 }}
-                                        whileTap={{ scale: 0.95 }}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleUserClick(participant);
-                                        }}
-                                        className="relative"
-                                      >
-                                        <Avatar className="h-8 w-8 border-2 border-white hover:border-primary/40 transition-all cursor-pointer">
-                                          <AvatarImage src={participant.avatar} alt={participant.name} />
-                                          <AvatarFallback>{participant.name[0]}</AvatarFallback>
-                                        </Avatar>
-                                      </motion.button>
-                                    ))}
+                                    <Avatar className="h-11 w-11 ring-2 ring-background shadow-md">
+                                      <AvatarImage src={event.host.avatar} alt={event.host.name} />
+                                      <AvatarFallback>{event.host.name[0]}</AvatarFallback>
+                                    </Avatar>
+                                  </motion.button>
+                                  <div className="flex-1 min-w-0">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleUserClick(event.host);
+                                      }}
+                                      className="font-semibold text-sm hover:text-primary transition-colors text-left w-full truncate"
+                                    >
+                                      {event.host.name}
+                                    </button>
+                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                      <MapPin className="h-3 w-3" />
+                                      <span className="truncate">{event.host.city}</span>
+                                    </div>
                                   </div>
-                                  {event.participants.length > 5 && (
-                                    <span className="text-xs text-muted-foreground">
-                                      +{event.participants.length - 5} more
+                                  <Badge variant="secondary" className="text-xs">
+                                    Host
+                                  </Badge>
+                                </div>
+                              </div>
+
+                              {/* Description */}
+                              <div className="px-6 py-4">
+                                <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+                                  {event.description}
+                                </p>
+                              </div>
+
+                              {/* Key Info Cards */}
+                              <div className="px-6 pb-4 space-y-3">
+                                {/* Location Card */}
+                                <button
+                                  className="w-full bg-primary/5 border border-primary/20 rounded-lg p-3 hover:bg-primary/10 transition-colors text-left"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (event.locationCoords) {
+                                      window.open(
+                                        `https://www.google.com/maps/search/?api=1&query=${event.locationCoords.lat},${event.locationCoords.lng}`,
+                                        '_blank'
+                                      );
+                                    } else {
+                                      window.open(
+                                        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`,
+                                        '_blank'
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                      <MapPin className="h-4 w-4 text-primary" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium text-muted-foreground mb-0.5">Location</p>
+                                      <p className="text-sm font-semibold text-foreground truncate">
+                                        {event.location}
+                                      </p>
+                                      <p className="text-xs text-primary font-medium mt-1">Tap to open in Maps</p>
+                                    </div>
+                                  </div>
+                                </button>
+
+                                {/* Participants Card */}
+                                <div className="bg-muted/50 rounded-lg p-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                      <Users className="h-4 w-4" />
+                                      <span>Participants</span>
+                                    </div>
+                                    <span className="text-sm font-bold">
+                                      {event.participants?.length || 0}/{event.maxParticipants}
                                     </span>
+                                  </div>
+                                  {event.participants && event.participants.length > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex -space-x-2">
+                                        {event.participants.slice(0, 4).map((participant) => (
+                                          <motion.button
+                                            key={participant._id}
+                                            whileHover={{ scale: 1.15, zIndex: 10 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleUserClick(participant);
+                                            }}
+                                            className="relative"
+                                          >
+                                            <Avatar className="h-7 w-7 border-2 border-background hover:border-primary/40 transition-all shadow-sm">
+                                              <AvatarImage src={participant.avatar} alt={participant.name} />
+                                              <AvatarFallback className="text-xs">{participant.name[0]}</AvatarFallback>
+                                            </Avatar>
+                                          </motion.button>
+                                        ))}
+                                      </div>
+                                      {event.participants.length > 4 && (
+                                        <span className="text-xs text-muted-foreground font-medium">
+                                          +{event.participants.length - 4} more joined
+                                        </span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              )}
 
-                              <div className="flex flex-wrap gap-2">
-                                {event.languages.map((lang) => (
-                                  <Badge key={lang} variant="outline">
-                                    {lang}
-                                  </Badge>
-                                ))}
+                                {/* Languages */}
+                                {event.languages && event.languages.length > 0 && (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Languages className="h-4 w-4 text-muted-foreground" />
+                                    {event.languages.slice(0, 3).map((lang) => (
+                                      <Badge key={lang} variant="outline" className="text-xs">
+                                        {lang}
+                                      </Badge>
+                                    ))}
+                                    {event.languages.length > 3 && (
+                                      <span className="text-xs text-muted-foreground">
+                                        +{event.languages.length - 3}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
 
-                            {/* Swipe Instructions */}
-                            <div className="p-6 border-t bg-muted/30">
-                              <div className="flex items-center justify-center gap-12">
-                                <div className="text-center">
-                                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+                            {/* Action Footer */}
+                            <div className="p-4 border-t bg-background">
+                              <div className="flex items-center justify-center gap-8">
+                                <motion.button
+                                  className="text-center cursor-pointer"
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePass(event._id);
+                                  }}
+                                >
+                                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 shadow-md">
                                     <X className="h-6 w-6 text-destructive" />
                                   </div>
-                                  <p className="text-xs text-muted-foreground mt-1">Pass</p>
-                                </div>
-                                <div className="text-center">
-                                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                                  <p className="text-xs font-medium text-muted-foreground mt-1">Pass</p>
+                                </motion.button>
+                                <motion.button
+                                  className="text-center cursor-pointer"
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleJoin(event._id);
+                                  }}
+                                >
+                                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 shadow-md">
                                     <Heart className="h-6 w-6 text-primary" />
                                   </div>
-                                  <p className="text-xs text-muted-foreground mt-1">Join</p>
-                                </div>
+                                  <p className="text-xs font-medium text-muted-foreground mt-1">Join</p>
+                                </motion.button>
                               </div>
                             </div>
                           </div>
                         </Card>
                       </TinderCard>
+                      </div>
                     );
                   })}
                 </>
@@ -335,6 +512,19 @@ export default function Home() {
         onClose={() => setIsPreviewOpen(false)}
         onViewFullProfile={handleViewFullProfile}
       />
+
+      {/* Location Map Modal */}
+      {selectedMapEvent && (
+        <LocationMapModal
+          isOpen={isMapModalOpen}
+          onClose={() => setIsMapModalOpen(false)}
+          location={{
+            address: selectedMapEvent.location,
+            coordinates: selectedMapEvent.locationCoords,
+          }}
+          title={selectedMapEvent.title}
+        />
+      )}
 
       {/* Bottom Navigation */}
       <BottomNav />

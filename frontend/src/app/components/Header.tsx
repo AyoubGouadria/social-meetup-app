@@ -5,10 +5,11 @@ import { LanguageSelector } from "./LanguageSelector";
 import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
 import { 
   Users, Bell, LogOut, User, Settings, 
-  Filter, Grid, Layers, Home, Calendar, CalendarCheck
+  Filter, Home, Calendar, CalendarCheck
 } from "lucide-react";
 import authService from "../../services/authService";
 import notificationService from "../../services/notificationService";
+import chatService from "../../services/chatService";
 import { useState, useEffect } from "react";
 import {
   DropdownMenu,
@@ -50,9 +51,33 @@ export function Header({
   useEffect(() => {
     if (isAuthenticated) {
       fetchUnreadCount();
-      // Refresh count every 30 seconds
+      
+      // Connect to socket for real-time notifications
+      const token = localStorage.getItem('token');
+      if (token) {
+        chatService.connect(token);
+        
+        // Listen for new notifications
+        chatService.onNewNotification((notification) => {
+          console.log('New notification received:', notification);
+          setUnreadCount(prev => prev + 1);
+        });
+
+        // Listen for notifications being marked as read
+        chatService.onNotificationsRead((data) => {
+          console.log('Notifications marked as read:', data);
+          setUnreadCount(data.unreadCount);
+        });
+      }
+      
+      // Refresh count every 30 seconds as backup
       const interval = setInterval(fetchUnreadCount, 30000);
-      return () => clearInterval(interval);
+      
+      return () => {
+        clearInterval(interval);
+        chatService.offNewNotification();
+        chatService.offNotificationsRead();
+      };
     }
   }, [isAuthenticated]);
 
@@ -77,7 +102,7 @@ export function Header({
           {/* Logo */}
           <div 
             className="flex items-center gap-2 cursor-pointer" 
-            onClick={() => navigate(isAuthenticated ? "/home" : "/")}
+            onClick={() => navigate("/")}
           >
             <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center">
               <Users className="h-6 w-6 text-white" />
@@ -113,7 +138,7 @@ export function Header({
                 My Events
               </Button>
               <Button
-                variant={location.pathname.startsWith("/profile") ? "default" : "ghost"}
+                variant={location.pathname === "/profile" ? "default" : "ghost"}
                 onClick={() => navigate("/profile")}
                 className="gap-2"
               >
@@ -192,21 +217,6 @@ export function Header({
               </Sheet>
             )}
 
-            {/* View Mode Toggle (only when provided) */}
-            {viewMode && onViewModeChange && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onViewModeChange(viewMode === "swipe" ? "grid" : "swipe")}
-              >
-                {viewMode === "swipe" ? (
-                  <Grid className="h-5 w-5" />
-                ) : (
-                  <Layers className="h-5 w-5" />
-                )}
-              </Button>
-            )}
-
             {/* Language Selector */}
             <LanguageSelector />
 
@@ -256,8 +266,12 @@ export function Header({
                       <span>Profile</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate("/my-events")}>
-                      <Settings className="mr-2 h-4 w-4" />
+                      <CalendarCheck className="mr-2 h-4 w-4" />
                       <span>My Events</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate("/settings")}>
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-destructive">

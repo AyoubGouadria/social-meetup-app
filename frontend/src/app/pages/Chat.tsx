@@ -70,7 +70,7 @@ export default function Chat() {
         console.log('Loading event with ID:', id);
         const eventData = await eventService.getEvent(id);
         console.log('Event loaded:', eventData);
-        setEvent(eventData);
+        setEvent(eventData.data);
 
         // Load messages
         console.log('Loading messages for event:', id);
@@ -85,6 +85,15 @@ export default function Chat() {
         }));
         setMessages(loadedMessages);
         console.log('Chat loaded successfully');
+
+        // Mark messages as read
+        try {
+          console.log('Marking messages as read for event:', id);
+          await chatService.markAsRead(id);
+          console.log('Messages marked as read successfully');
+        } catch (error) {
+          console.error('Error marking messages as read:', error);
+        }
       } catch (error: any) {
         console.error('Error loading chat:', error);
         toast({
@@ -212,7 +221,7 @@ export default function Chat() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => navigate(`/event/${id}`)}
+              onClick={() => navigate(-1)}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>

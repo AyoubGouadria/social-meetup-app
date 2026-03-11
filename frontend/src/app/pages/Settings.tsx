@@ -42,6 +42,20 @@ export default function Settings() {
     bio: user?.bio || "",
     city: user?.city || "",
     languages: user?.languages || [],
+    age: user?.age?.toString() || "",
+    gender: user?.gender || "Prefer not to say",
+    occupation: user?.occupation || "",
+    education: user?.education || "",
+    interests: user?.interests || [] as string[],
+    phoneNumber: user?.phoneNumber || "",
+    socialMedia: {
+      instagram: user?.socialMedia?.instagram || "",
+      facebook: user?.socialMedia?.facebook || "",
+      twitter: user?.socialMedia?.twitter || "",
+      linkedin: user?.socialMedia?.linkedin || ""
+    },
+    lookingFor: user?.lookingFor || [] as string[],
+    relationshipStatus: user?.relationshipStatus || "Prefer not to say"
   });
 
   const [images, setImages] = useState<string[]>(user?.images || (user?.avatar ? [user.avatar] : []));
@@ -57,6 +71,11 @@ export default function Settings() {
 
   const availableLanguages = ["English", "German", "Arabic", "Spanish", "French", "Turkish", "Italian"];
   const germanCities = ["Berlin", "Munich", "Hamburg", "Frankfurt", "Cologne", "Stuttgart", "Düsseldorf"];
+  const availableInterests = ["Music", "Sports", "Reading", "Travel", "Cooking", "Photography", "Art", "Technology", "Gaming", "Fitness", "Movies", "Dancing", "Hiking", "Yoga"];
+  const lookingForOptions = ["Friends", "Study Partners", "Events", "Networking", "Language Exchange", "Sports Partners"];
+  const genderOptions = ["Male", "Female", "Non-binary", "Prefer not to say", "Other"];
+  const educationOptions = ["High School", "Bachelor's Degree", "Master's Degree", "PhD", "Other"];
+  const relationshipOptions = ["Single", "In a relationship", "Married", "Prefer not to say"];
 
   const toggleLanguage = (lang: string) => {
     setProfile({
@@ -64,6 +83,24 @@ export default function Settings() {
       languages: profile.languages.includes(lang)
         ? profile.languages.filter((l) => l !== lang)
         : [...profile.languages, lang],
+    });
+  };
+
+  const toggleInterest = (interest: string) => {
+    setProfile({
+      ...profile,
+      interests: profile.interests.includes(interest)
+        ? profile.interests.filter((i) => i !== interest)
+        : [...profile.interests, interest],
+    });
+  };
+
+  const toggleLookingFor = (option: string) => {
+    setProfile({
+      ...profile,
+      lookingFor: profile.lookingFor.includes(option)
+        ? profile.lookingFor.filter((o) => o !== option)
+        : [...profile.lookingFor, option],
     });
   };
 
@@ -179,6 +216,17 @@ export default function Settings() {
         languages: profile.languages,
         avatar: images[0] || undefined,
         images: images.length > 0 ? images : undefined,
+        age: profile.age ? parseInt(profile.age) : undefined,
+        gender: profile.gender,
+        occupation: profile.occupation || undefined,
+        education: profile.education || undefined,
+        interests: profile.interests.length > 0 ? profile.interests : undefined,
+        phoneNumber: profile.phoneNumber || undefined,
+        socialMedia: (profile.socialMedia.instagram || profile.socialMedia.facebook || 
+                     profile.socialMedia.twitter || profile.socialMedia.linkedin) 
+                     ? profile.socialMedia : undefined,
+        lookingFor: profile.lookingFor.length > 0 ? profile.lookingFor : undefined,
+        relationshipStatus: profile.relationshipStatus
       } as any);
 
       setSuccess("Profile updated successfully!");
@@ -226,11 +274,11 @@ export default function Settings() {
             </div>
           )}
 
-          {/* Profile Photos */}
+          {/* Overview Photos */}
           <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Profile Photos</h2>
+            <h2 className="text-xl font-semibold mb-4">Overview Photos</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              Add up to {MAX_IMAGES} photos. The first photo is your main profile picture. 
+              Add up to {MAX_IMAGES} photos. The first photo is your main overview picture. 
               Drag to reorder.
             </p>
 
@@ -378,6 +426,205 @@ export default function Settings() {
                   )}
                 </Badge>
               ))}
+            </div>
+          </Card>
+
+          {/* Personal Information */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Personal Information</h2>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="age">Age</Label>
+                  <Input
+                    id="age"
+                    type="number"
+                    min="18"
+                    max="100"
+                    placeholder="25"
+                    value={profile.age}
+                    onChange={(e) => setProfile({ ...profile, age: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Gender</Label>
+                  <select
+                    id="gender"
+                    className="w-full h-10 px-3 rounded-lg border border-input bg-input-background"
+                    value={profile.gender}
+                    onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
+                  >
+                    {genderOptions.map((gender) => (
+                      <option key={gender} value={gender}>
+                        {gender}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="occupation">Occupation</Label>
+                <Input
+                  id="occupation"
+                  placeholder="Software Engineer, Student, etc."
+                  value={profile.occupation}
+                  onChange={(e) => setProfile({ ...profile, occupation: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="education">Education Level</Label>
+                <select
+                  id="education"
+                  className="w-full h-10 px-3 rounded-lg border border-input bg-input-background"
+                  value={profile.education}
+                  onChange={(e) => setProfile({ ...profile, education: e.target.value })}
+                >
+                  <option value="">Select education level</option>
+                  {educationOptions.map((edu) => (
+                    <option key={edu} value={edu}>
+                      {edu}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phoneNumber">Phone Number</Label>
+                <Input
+                  id="phoneNumber"
+                  type="tel"
+                  placeholder="+49 123 4567890"
+                  value={profile.phoneNumber}
+                  onChange={(e) => setProfile({ ...profile, phoneNumber: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="relationshipStatus">Relationship Status</Label>
+                <select
+                  id="relationshipStatus"
+                  className="w-full h-10 px-3 rounded-lg border border-input bg-input-background"
+                  value={profile.relationshipStatus}
+                  onChange={(e) => setProfile({ ...profile, relationshipStatus: e.target.value })}
+                >
+                  {relationshipOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </Card>
+
+          {/* Interests */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Interests</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Select all that apply
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+              {availableInterests.map((interest) => (
+                <Badge
+                  key={interest}
+                  variant={profile.interests.includes(interest) ? "default" : "outline"}
+                  className="cursor-pointer px-4 py-2 text-sm"
+                  onClick={() => toggleInterest(interest)}
+                >
+                  {interest}
+                  {profile.interests.includes(interest) && (
+                    <X className="ml-2 h-3 w-3" />
+                  )}
+                </Badge>
+              ))}
+            </div>
+          </Card>
+
+          {/* Looking For */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">What Are You Looking For?</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Select all that apply
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+              {lookingForOptions.map((option) => (
+                <Badge
+                  key={option}
+                  variant={profile.lookingFor.includes(option) ? "default" : "outline"}
+                  className="cursor-pointer px-4 py-2 text-sm"
+                  onClick={() => toggleLookingFor(option)}
+                >
+                  {option}
+                  {profile.lookingFor.includes(option) && (
+                    <X className="ml-2 h-3 w-3" />
+                  )}
+                </Badge>
+              ))}
+            </div>
+          </Card>
+
+          {/* Social Media */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Social Media</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Connect your social media profiles (optional)
+            </p>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="instagram">Instagram</Label>
+                <Input
+                  id="instagram"
+                  placeholder="@username"
+                  value={profile.socialMedia.instagram}
+                  onChange={(e) => setProfile({ 
+                    ...profile, 
+                    socialMedia: { ...profile.socialMedia, instagram: e.target.value }
+                  })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="facebook">Facebook</Label>
+                <Input
+                  id="facebook"
+                  placeholder="facebook.com/username"
+                  value={profile.socialMedia.facebook}
+                  onChange={(e) => setProfile({ 
+                    ...profile, 
+                    socialMedia: { ...profile.socialMedia, facebook: e.target.value }
+                  })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="twitter">Twitter / X</Label>
+                <Input
+                  id="twitter"
+                  placeholder="@username"
+                  value={profile.socialMedia.twitter}
+                  onChange={(e) => setProfile({ 
+                    ...profile, 
+                    socialMedia: { ...profile.socialMedia, twitter: e.target.value }
+                  })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="linkedin">LinkedIn</Label>
+                <Input
+                  id="linkedin"
+                  placeholder="linkedin.com/in/username"
+                  value={profile.socialMedia.linkedin}
+                  onChange={(e) => setProfile({ 
+                    ...profile, 
+                    socialMedia: { ...profile.socialMedia, linkedin: e.target.value }
+                  })}
+                />
+              </div>
             </div>
           </Card>
 

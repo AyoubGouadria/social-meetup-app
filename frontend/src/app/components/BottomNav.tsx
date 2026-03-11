@@ -11,7 +11,7 @@ export function BottomNav() {
     { id: "discover", label: "Discover", icon: Home, path: "/home" },
     { id: "joined", label: "Joined", icon: Calendar, path: "/joined-events" },
     { id: "my-events", label: "My Events", icon: CalendarCheck, path: "/my-events" },
-    { id: "profile", label: "Profile", icon: User, path: "/profile" },
+    { id: "profile", label: "Overview", icon: User, path: "/profile" },
   ];
 
   const isActive = (path: string) => location.pathname === path;

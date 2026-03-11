@@ -4,6 +4,7 @@ const { body } = require('express-validator');
 const validate = require('../middleware/validation');
 const { protect } = require('../middleware/auth');
 const {
+  getUserConversations,
   getEventMessages,
   sendMessage,
   markMessagesAsRead
@@ -16,6 +17,7 @@ const messageValidation = [
 ];
 
 // Routes
+router.get('/conversations', protect, getUserConversations);
 router.get('/event/:eventId', protect, getEventMessages);
 router.post('/', protect, messageValidation, validate, sendMessage);
 router.put('/read/:eventId', protect, markMessagesAsRead);

@@ -1,27 +1,27 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useLanguage } from "../contexts/LanguageContext";
-import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Header } from "../components/Header";
 import { BottomNav } from "../components/BottomNav";
+import { Button } from "../components/ui/button";
 import notificationService, { Notification } from "../../services/notificationService";
-import joinRequestService from "../../services/joinRequestService";
+import chatService from "../../services/chatService";
 import { useToast } from "../components/ui/use-toast";
 import { motion } from "motion/react";
 import {
   ArrowLeft,
   Bell,
-  Check,
-  X,
-  Languages,
   Calendar,
   MessageCircle,
   CheckCircle2,
   Clock,
   Loader2,
+  AlertCircle,
+  X,
+  Trash2,
 } from "lucide-react";
 
 export default function Notifications() {
@@ -31,16 +31,48 @@ export default function Notifications() {
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const ITEMS_PER_PAGE = 6;
 
   useEffect(() => {
     fetchNotifications();
+    
+    // Listen for real-time notifications
+    const token = localStorage.getItem('token');
+    if (token) {
+      chatService.connect(token);
+      
+      chatService.onNewNotification((notification) => {
+        console.log('New notification received in Notifications page:', notification);
+        // Add the new notification to the list
+        setNotifications(prev => [notification, ...prev]);
+      });
+    }
+    
+    return () => {
+      chatService.offNewNotification();
+    };
   }, []);
 
   const fetchNotifications = async () => {
     try {
       setIsLoading(true);
-      const response = await notificationService.getNotifications();
-      setNotifications(response.data || []);
+      const response = await notificationService.getNotifications(1, ITEMS_PER_PAGE);
+      const fetchedNotifications = response.data || [];
+      setNotifications(fetchedNotifications);
+      setHasMore(fetchedNotifications.length === ITEMS_PER_PAGE);
+      setCurrentPage(1);
+      
+      // Mark all notifications as read when viewing the page
+      const hasUnread = fetchedNotifications.some((n: Notification) => !n.isRead);
+      if (hasUnread) {
+        await notificationService.markAllAsRead();
+        // Update local state to reflect read status
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      }
     } catch (error) {
       console.error("Error fetching notifications:", error);
       toast({
@@ -53,45 +85,48 @@ export default function Notifications() {
     }
   };
 
-  const handleAccept = async (notificationId: string, joinRequestId: string) => {
+  const loadMoreNotifications = async () => {
     try {
-      await joinRequestService.acceptJoinRequest(joinRequestId);
+      setIsLoadingMore(true);
+      const nextPage = currentPage + 1;
+      const response = await notificationService.getNotifications(nextPage, ITEMS_PER_PAGE);
+      const fetchedNotifications = response.data || [];
       
-      // Refresh notifications to show the updated one
-      await fetchNotifications();
-
-      toast({
-        title: "Request Accepted",
-        description: "The participant has been added to your event",
-      });
+      setNotifications(prev => [...prev, ...fetchedNotifications]);
+      setCurrentPage(nextPage);
+      setHasMore(fetchedNotifications.length === ITEMS_PER_PAGE);
     } catch (error) {
-      console.error("Error accepting request:", error);
+      console.error("Error loading more notifications:", error);
       toast({
         title: "Error",
-        description: "Failed to accept request",
+        description: "Failed to load more notifications",
         variant: "destructive",
       });
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
-  const handleDecline = async (notificationId: string, joinRequestId: string) => {
+  const handleDeleteNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
     try {
-      await joinRequestService.rejectJoinRequest(joinRequestId);
-      
-      // Refresh notifications to show the updated one
-      await fetchNotifications();
-
+      setDeletingId(id);
+      await notificationService.deleteNotification(id);
+      setNotifications(prev => prev.filter(n => n._id !== id));
       toast({
-        title: "Request Declined",
-        description: "The join request has been declined",
+        title: "Deleted",
+        description: "Notification deleted successfully",
       });
     } catch (error) {
-      console.error("Error declining request:", error);
+      console.error("Error deleting notification:", error);
       toast({
         title: "Error",
-        description: "Failed to decline request",
+        description: "Failed to delete notification",
         variant: "destructive",
       });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -131,13 +166,29 @@ export default function Notifications() {
           transition={{ delay: index * 0.1 }}
         >
           <Card
-            className={`p-5 ${
+            className={`p-5 cursor-pointer hover:shadow-md transition-all relative ${
               !notification.isRead ? "border-l-4 border-l-primary bg-primary/5" : ""
             }`}
+            onClick={() => navigate("/my-events")}
           >
+            {/* Delete Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-3 right-3 h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
+              onClick={(e) => handleDeleteNotification(notification._id, e)}
+              disabled={deletingId === notification._id}
+            >
+              {deletingId === notification._id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </Button>
+
             <div className="space-y-4">
               {/* Header */}
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-3 pr-8">
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
                     <Bell className="h-4 w-4 text-primary" />
@@ -154,52 +205,22 @@ export default function Notifications() {
 
               {/* User Info */}
               <div className="flex items-start gap-4">
-                <Avatar
-                  className="h-14 w-14 cursor-pointer ring-2 ring-muted hover:ring-primary/40 transition-all"
-                  onClick={() => navigate(`/profile/${notification.sender._id}`)}
-                >
+                <Avatar className="h-14 w-14 ring-2 ring-muted">
                   <AvatarImage src={notification.sender.avatar} alt={notification.sender.name} />
                   <AvatarFallback>{notification.sender.name[0]}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <button
-                    onClick={() => navigate(`/profile/${notification.sender._id}`)}
-                    className="font-semibold hover:text-primary transition-colors"
-                  >
-                    {notification.sender.name}
-                  </button>
+                  <p className="font-semibold">{notification.sender.name}</p>
                   <p className="text-sm text-muted-foreground mt-1">{notification.message}</p>
+                  
+                  {/* Event Name */}
+                  {notification.event && (
+                    <div className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>For: {notification.event.title}</span>
+                    </div>
+                  )}
                 </div>
-              </div>
-
-              {/* Event Name */}
-              {notification.event && (
-                <button
-                  onClick={() => navigate(`/event/${notification.event!._id}`)}
-                  className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1.5"
-                >
-                  <Calendar className="h-3.5 w-3.5" />
-                  <span>For: {notification.event.title}</span>
-                </button>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-2">
-                <Button
-                  variant="outline"
-                  className="flex-1 gap-2"
-                  onClick={() => handleDecline(notification._id, notification.joinRequest!)}
-                >
-                  <X className="h-4 w-4" />
-                  Decline
-                </Button>
-                <Button
-                  className="flex-1 gap-2"
-                  onClick={() => handleAccept(notification._id, notification.joinRequest!)}
-                >
-                  <Check className="h-4 w-4" />
-                  Accept
-                </Button>
               </div>
             </div>
           </Card>
@@ -216,7 +237,7 @@ export default function Notifications() {
         transition={{ delay: index * 0.1 }}
       >
         <Card
-          className={`p-4 cursor-pointer hover:shadow-md transition-all ${
+          className={`p-4 cursor-pointer hover:shadow-md transition-all relative ${
             !notification.isRead ? "border-l-4 border-l-primary bg-primary/5" : ""
           }`}
           onClick={async () => {
@@ -227,17 +248,41 @@ export default function Notifications() {
               ));
             }
             if (notification.event) {
-              navigate(`/event/${notification.event._id}`);
+              // Navigate to chat if it's a message notification, otherwise to event page
+              if (notification.type === 'new_message') {
+                navigate(`/event/${notification.event._id}/chat`);
+              } else {
+                navigate(`/event/${notification.event._id}`);
+              }
             }
           }}
         >
-          <div className="flex items-start gap-3">
+          {/* Delete Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
+            onClick={(e) => handleDeleteNotification(notification._id, e)}
+            disabled={deletingId === notification._id}
+          >
+            {deletingId === notification._id ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+          </Button>
+
+          <div className="flex items-start gap-3 pr-8">
             <div
               className={`h-10 w-10 rounded-full flex items-center justify-center ${
                 notification.type === "request_accepted" || notification.type === "participant_joined"
                   ? "bg-green-100"
-                  : notification.type === "request_rejected" || notification.type === "participant_left"
+                  : notification.type === "request_rejected" || notification.type === "participant_left" || notification.type === "event_cancelled"
                   ? "bg-red-100"
+                  : notification.type === "new_message"
+                  ? "bg-blue-100"
+                  : notification.type === "event_reminder"
+                  ? "bg-amber-100"
                   : "bg-blue-100"
               }`}
             >
@@ -247,8 +292,17 @@ export default function Notifications() {
               {(notification.type === "request_rejected" || notification.type === "participant_left") && (
                 <X className="h-5 w-5 text-red-600" />
               )}
+              {notification.type === "event_cancelled" && (
+                <AlertCircle className="h-5 w-5 text-red-600" />
+              )}
               {notification.type === "new_message" && (
                 <MessageCircle className="h-5 w-5 text-blue-600" />
+              )}
+              {notification.type === "event_reminder" && (
+                <Clock className="h-5 w-5 text-amber-600" />
+              )}
+              {!["request_accepted", "participant_joined", "request_rejected", "participant_left", "event_cancelled", "new_message", "event_reminder"].includes(notification.type) && (
+                <Bell className="h-5 w-5 text-blue-600" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -311,7 +365,39 @@ export default function Notifications() {
             </p>
           </Card>
         ) : (
-          <div className="space-y-4">{notifications.map(renderNotificationCard)}</div>
+          <>
+            <div className="space-y-4">{notifications.map(renderNotificationCard)}</div>
+            
+            {/* Load More Button */}
+            {hasMore && (
+              <div className="mt-6 flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={loadMoreNotifications}
+                  disabled={isLoadingMore}
+                  className="gap-2"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      Load More
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* End of notifications indicator */}
+            {!hasMore && notifications.length > ITEMS_PER_PAGE && (
+              <div className="mt-6 text-center text-sm text-muted-foreground">
+                You've reached the end of your notifications
+              </div>
+            )}
+          </>
         )}
       </main>
 

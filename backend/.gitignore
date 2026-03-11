@@ -1,5 +1,51 @@
+# ═══════════════════════════════════════════════════════════════
+# MEETLY BACKEND - GIT IGNORE
+# ═══════════════════════════════════════════════════════════════
+
+# Dependencies
 node_modules/
+package-lock.json
+
+# Environment Variables (CRITICAL - Never commit!)
 .env
-uploads/
+.env.local
+.env.*.local
+.env.production
+
+# Logs
+logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Uploads (local development only)
+uploads/
+temp/
+
+# OS Files
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build output
+dist/
+build/
+.cache/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.pem
+*.key
+.eslintcache

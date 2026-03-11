@@ -17,7 +17,9 @@ const eventSchema = new mongoose.Schema({
   category: {
     type: String,
     required: true,
-    enum: ['coffee', 'walk', 'study', 'gym', 'explore', 'other']
+    trim: true,
+    minlength: [3, 'Category must be at least 3 characters'],
+    maxlength: [30, 'Category cannot exceed 30 characters']
   },
   date: {
     type: Date,

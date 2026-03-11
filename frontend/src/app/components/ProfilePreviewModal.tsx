@@ -105,7 +105,7 @@ export function ProfilePreviewModal({
                   onClose();
                 }}
               >
-                View Full Profile
+                View Full Overview
               </Button>
             </div>
           </div>

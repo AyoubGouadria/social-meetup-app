@@ -2,6 +2,38 @@ const JoinRequest = require('../models/JoinRequest');
 const Event = require('../models/Event');
 const Notification = require('../models/Notification');
 
+// Utility function to clean up pending requests for events that have already passed
+const cleanupExpiredPendingRequests = async () => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Find all pending requests
+    const pendingRequests = await JoinRequest.find({ status: 'pending' }).populate('event');
+    
+    // Filter requests for events that have passed
+    const expiredRequestIds = pendingRequests
+      .filter(request => {
+        if (!request.event) return false;
+        const eventDate = new Date(request.event.date);
+        eventDate.setHours(0, 0, 0, 0);
+        return eventDate < today;
+      })
+      .map(request => request._id);
+
+    // Delete expired pending requests
+    if (expiredRequestIds.length > 0) {
+      await JoinRequest.deleteMany({ _id: { $in: expiredRequestIds } });
+      console.log(`Cleaned up ${expiredRequestIds.length} expired pending requests`);
+    }
+
+    return expiredRequestIds.length;
+  } catch (error) {
+    console.error('Error cleaning up expired requests:', error);
+    return 0;
+  }
+};
+
 // @desc    Create join request
 // @route   POST /api/join-requests
 // @access  Private
@@ -63,7 +95,7 @@ exports.createJoinRequest = async (req, res, next) => {
     await joinRequest.populate('event', 'title date location');
 
     // Create notification for event host
-    await Notification.create({
+    const notification = await Notification.create({
       recipient: event.host,
       sender: req.user._id,
       type: 'join_request',
@@ -73,6 +105,15 @@ exports.createJoinRequest = async (req, res, next) => {
       joinRequest: joinRequest._id,
       actionable: true
     });
+
+    // Populate notification for socket emission
+    await notification.populate('sender', 'name avatar');
+    await notification.populate('event', 'title');
+
+    // Emit real-time notification via socket.io
+    if (global.io) {
+      global.io.to(`user_${event.host.toString()}`).emit('new_notification', notification);
+    }
 
     res.status(201).json({
       success: true,
@@ -108,8 +149,26 @@ exports.getEventJoinRequests = async (req, res, next) => {
       });
     }
 
+    // Delete pending requests for events that have already passed
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const eventDate = new Date(event.date);
+    eventDate.setHours(0, 0, 0, 0);
+
+    if (eventDate < today && status === 'pending') {
+      // Event has passed, delete all pending requests for this event
+      await JoinRequest.deleteMany({ event: eventId, status: 'pending' });
+      
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: []
+      });
+    }
+
     const joinRequests = await JoinRequest.find({ event: eventId, status })
       .populate('user', 'name avatar bio city languages')
+      .populate('event', 'title date location')
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -127,6 +186,9 @@ exports.getEventJoinRequests = async (req, res, next) => {
 // @access  Private
 exports.getMyJoinRequests = async (req, res, next) => {
   try {
+    // Clean up expired pending requests first
+    await cleanupExpiredPendingRequests();
+
     const joinRequests = await JoinRequest.find({ user: req.user._id })
       .populate('event', 'title date location host')
       .populate({
@@ -206,7 +268,7 @@ exports.acceptJoinRequest = async (req, res, next) => {
     );
 
     // Create notification for requester
-    await Notification.create({
+    const requesterNotification = await Notification.create({
       recipient: joinRequest.user._id,
       sender: req.user._id,
       type: 'request_accepted',
@@ -214,6 +276,15 @@ exports.acceptJoinRequest = async (req, res, next) => {
       message: `Your request to join ${event.title} has been accepted!`,
       event: event._id
     });
+
+    // Populate notification for socket emission
+    await requesterNotification.populate('sender', 'name avatar');
+    await requesterNotification.populate('event', 'title');
+
+    // Emit real-time notification via socket.io
+    if (global.io) {
+      global.io.to(`user_${joinRequest.user._id.toString()}`).emit('new_notification', requesterNotification);
+    }
 
     res.status(200).json({
       success: true,
@@ -271,13 +342,23 @@ exports.rejectJoinRequest = async (req, res, next) => {
     );
 
     // Create notification for requester
-    await Notification.create({
+    const requesterNotification = await Notification.create({
       recipient: joinRequest.user._id,
+      sender: req.user._id,
       type: 'request_rejected',
       title: 'Request Declined',
       message: `Your request to join ${event.title} was declined`,
       event: event._id
     });
+
+    // Populate notification for socket emission
+    await requesterNotification.populate('sender', 'name avatar');
+    await requesterNotification.populate('event', 'title');
+
+    // Emit real-time notification via socket.io
+    if (global.io) {
+      global.io.to(`user_${joinRequest.user._id.toString()}`).emit('new_notification', requesterNotification);
+    }
 
     res.status(200).json({
       success: true,
